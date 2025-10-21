@@ -8,30 +8,54 @@ This document outlines the Torn API endpoints used by the War Hits Tracker and t
 - **Purpose**: Retrieve the player's basic profile information (username and player ID)
 - **Required Permission**: **Public Access Key**
 - **Response Data Used**:
-  - `name`: Player username
-  - `player_id`: Player ID number
+  - `profile.name`: Player username
+  - `profile.id`: Player ID number
 
 ### 2. `/user/faction` (GET)
 - **Purpose**: Retrieve the player's faction information
 - **Required Permission**: **Public Access Key**
 - **Response Data Used**:
-  - `faction_name`: Name of the faction the player belongs to
-  - `faction_id`: Faction ID number
+  - `faction.name`: Name of the faction the player belongs to
+  - `faction.id`: Faction ID number
 
 ### 3. `/faction/wars` (GET)
 - **Purpose**: Retrieve details about the faction's current wars and pacts
 - **Required Permission**: **Public Access Key**
 - **Response Data Used**:
-  - `ranked_wars`: Information about ranked wars
-  - `raid_wars`: Information about raid wars
-  - `territory_wars`: Information about territory wars
-  - For each war type: faction names, IDs, and scores
+  - `wars.ranked`: Information about the ranked war (single object)
+  - `wars.raids`: Information about raid wars (array)
+  - `wars.territory`: Information about territory wars (array)
+  - For each war: faction names, IDs, scores, and start times
 
-## Minimum API Key Permission Required
+### 4. `/torn/timestamp` (GET)
+- **Purpose**: Get current server timestamp to determine if wars are active or upcoming
+- **Required Permission**: **Public Access Key**
+- **Response Data Used**:
+  - `timestamp`: Current server Unix timestamp
 
-**Public Access Key**
+### 5. `/user/attacksfull` (GET)
+- **Purpose**: Retrieve simplified attack history to count war hits
+- **Required Permission**: **Limited Access Key**
+- **Query Parameters**:
+  - `from`: Unix timestamp to filter attacks from (set to earliest war start)
+  - `limit`: Maximum number of attacks to return (set to 1000)
+- **Response Data Used**:
+  - `attacks`: Collection of attack objects
+  - For each attack: `is_ranked_war`, `defender.faction.id`, `respect_gain`
 
-All three endpoints require only a **Public Access Key**, which is the most basic level of API access in Torn. This ensures maximum security as users don't need to provide keys with elevated permissions.
+## API Key Permission Levels
+
+### For Basic Functionality (War Status Only)
+**Public Access Key** - View your profile, faction, and war status
+
+### For Full Functionality (War Status + Hit Counting)
+**Limited Access Key** - Required to access attack history for counting your war hits
+
+### Hit Counting Logic
+A war hit is counted when ALL of the following conditions are met:
+1. `is_ranked_war` is `true`
+2. `defender.faction.id` matches the enemy faction ID
+3. `respect_gain` > 0 (successful attack)
 
 ## API Base URL
 

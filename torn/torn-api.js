@@ -82,6 +82,25 @@ async function fetchTimestamp(apiKey) {
 }
 
 /**
+ * Fetch user attacks (simplified version)
+ * @param {string} apiKey - The Torn API key
+ * @param {number} fromTimestamp - Filter attacks from this timestamp
+ * @returns {Promise<Object>} Attacks data
+ */
+async function fetchUserAttacks(apiKey, fromTimestamp) {
+    const url = `${API_BASE_URL}/user/attacksfull?from=${fromTimestamp}&limit=1000`;
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `ApiKey ${apiKey}`
+        }
+    });
+    if (!response.ok) {
+        throw new Error(`Failed to fetch attacks: ${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+}
+
+/**
  * Load and display all user data
  * Fetches user basic info, faction info, and war status in parallel
  * @param {string} apiKey - The Torn API key
@@ -97,7 +116,7 @@ async function loadUserData(apiKey) {
         errorState.style.display = 'none';
         userInfo.style.display = 'none';
         
-        // Fetch all data in parallel
+        // Fetch basic data first
         const [userBasic, userFaction, factionWars, timestamp] = await Promise.all([
             fetchUserBasic(apiKey),
             fetchUserFaction(apiKey),
@@ -111,14 +130,24 @@ async function loadUserData(apiKey) {
         console.log('Faction Wars Response:', factionWars);
         console.log('Timestamp Response:', timestamp);
         
+        // Get earliest war start time for filtering attacks
+        const earliestWarStart = getEarliestWarStart(factionWars, timestamp.timestamp);
+        
+        // Fetch attacks if there are active wars
+        let userAttacks = null;
+        if (earliestWarStart !== null) {
+            userAttacks = await fetchUserAttacks(apiKey, earliestWarStart);
+            console.log('User Attacks Response:', userAttacks);
+        }
+        
         // Display user information (data is nested in profile and faction objects)
         document.getElementById('username').textContent = userBasic.profile?.name || 'Unknown';
         document.getElementById('userId').textContent = userBasic.profile?.id || 'N/A';
         document.getElementById('factionName').textContent = userFaction.faction?.name || 'None';
         document.getElementById('factionId').textContent = userFaction.faction?.id || 'N/A';
         
-        // Display war information (pass faction info and current timestamp for context)
-        displayWarInfo(factionWars, userFaction.faction, timestamp.timestamp);
+        // Display war information (pass faction info, timestamp, and attacks for context)
+        displayWarInfo(factionWars, userFaction.faction, timestamp.timestamp, userAttacks);
         
         // Hide loading, show content
         loadingState.style.display = 'none';
@@ -133,13 +162,87 @@ async function loadUserData(apiKey) {
 }
 
 /**
+ * Get the earliest start time from all active wars
+ * @param {Object} warsData - Wars data from the API
+ * @param {number} currentTimestamp - Current server timestamp
+ * @returns {number|null} Earliest war start timestamp, or null if no active wars
+ */
+function getEarliestWarStart(warsData, currentTimestamp) {
+    const wars = warsData.wars || {};
+    let earliestStart = null;
+    
+    // Check ranked war
+    const rankedWar = wars.ranked;
+    if (rankedWar && rankedWar.start && rankedWar.start <= currentTimestamp) {
+        earliestStart = rankedWar.start;
+    }
+    
+    // Check raid wars
+    const raidWars = Array.isArray(wars.raids) ? wars.raids : [];
+    for (const war of raidWars) {
+        if (war && war.start && war.start <= currentTimestamp) {
+            if (earliestStart === null || war.start < earliestStart) {
+                earliestStart = war.start;
+            }
+        }
+    }
+    
+    // Check territory wars
+    const territoryWars = Array.isArray(wars.territory) ? wars.territory : [];
+    for (const war of territoryWars) {
+        if (war && war.start && war.start <= currentTimestamp) {
+            if (earliestStart === null || war.start < earliestStart) {
+                earliestStart = war.start;
+            }
+        }
+    }
+    
+    return earliestStart;
+}
+
+/**
+ * Count war hits for a specific enemy faction
+ * @param {Object} attacksData - Attacks data from the API
+ * @param {number} enemyFactionId - The enemy faction ID
+ * @returns {number} Number of successful war hits
+ */
+function countWarHits(attacksData, enemyFactionId) {
+    if (!attacksData || !attacksData.attacks) {
+        return 0;
+    }
+    
+    let hitCount = 0;
+    const attacks = Object.values(attacksData.attacks);
+    
+    for (const attack of attacks) {
+        // Check if it's a ranked war attack
+        if (!attack.is_ranked_war) {
+            continue;
+        }
+        
+        // Check if defender is from the enemy faction
+        if (attack.defender?.faction?.id !== enemyFactionId) {
+            continue;
+        }
+        
+        // Check if attack was successful (respect gained)
+        if (attack.respect_gain && attack.respect_gain > 0) {
+            hitCount++;
+        }
+    }
+    
+    return hitCount;
+}
+
+/**
  * Display war information on the page
  * Shows active wars broken down by type (ranked, raid, territory)
  * @param {Object} warsData - Wars data from the API
  * @param {Object} userFaction - User's faction information
  * @param {number} currentTimestamp - Current server timestamp
+ * @param {Object} attacksData - User attacks data (optional)
  */
-function displayWarInfo(warsData, userFaction, currentTimestamp) {
+function displayWarInfo(warsData, userFaction, currentTimestamp, attacksData) {
     const warContent = document.getElementById('warContent');
     
     // Wars data structure: wars.ranked, wars.raids, wars.territory
@@ -208,6 +311,12 @@ function displayWarInfo(warsData, userFaction, currentTimestamp) {
                     const yourFaction = factions.find(f => f && f.id === userFaction?.id);
                     if (yourFaction && faction.score !== undefined && yourFaction.score !== undefined) {
                         warHtml += ` - Score: ${yourFaction.score} : ${faction.score}`;
+                    }
+                    
+                    // Show hit counter for active wars
+                    if (attacksData) {
+                        const hitCount = countWarHits(attacksData, faction.id);
+                        warHtml += `<br><span style="color: #2196F3; font-weight: bold;">Your Hits: ${hitCount}</span>`;
                     }
                 }
                 

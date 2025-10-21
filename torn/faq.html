@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAQ - Torn War Hits Tracker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        h2 {
+            color: #2196F3;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 20px;
+            border-bottom: 2px solid #2196F3;
+            padding-bottom: 5px;
+        }
+        .back-button {
+            display: inline-block;
+            margin-bottom: 20px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .back-button:hover {
+            background-color: #45a049;
+        }
+        .question {
+            font-weight: bold;
+            color: #333;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        .answer {
+            color: #555;
+            margin-left: 20px;
+            margin-bottom: 20px;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-weight: bold;
+        }
+        .note {
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        ul {
+            margin-left: 40px;
+        }
+        li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="warhits.html" class="back-button">← Back to War Hits Tracker</a>
+        
+        <h1>Frequently Asked Questions</h1>
+        <p style="color: #666;">Everything you need to know about tracking your war hits</p>
+
+        <h2>How War Hits Are Counted</h2>
+
+        <div class="question">What counts as a war hit?</div>
+        <div class="answer">
+            A war hit is counted when <strong>all</strong> of the following conditions are met:
+            <ul>
+                <li>The attack is part of a <span class="highlight">ranked war</span> (the <code>is_ranked_war</code> flag must be true)</li>
+                <li>The defender is a member of the <span class="highlight">enemy faction</span> you are at war with</li>
+                <li>The attack was <span class="highlight">successful</span> and you gained respect (respect_gain > 0)</li>
+            </ul>
+        </div>
+
+        <div class="question">What doesn't count as a war hit?</div>
+        <div class="answer">
+            The following attacks are <strong>NOT</strong> counted:
+            <ul>
+                <li>Attacks where you lost or drew (no respect gained)</li>
+                <li>Attacks on players not in the enemy faction</li>
+                <li>Attacks that are not part of a ranked war (raid wars, territory wars, regular attacks)</li>
+                <li>Attacks that occurred before the war started</li>
+            </ul>
+        </div>
+
+        <div class="question">How far back does the tracker look?</div>
+        <div class="answer">
+            The tracker automatically looks back to the <span class="highlight">earliest start time</span> of all your faction's active wars. 
+            This ensures all hits from the beginning of the war are counted, regardless of when the war started.
+            <br><br>
+            The system retrieves up to <span class="highlight">1,000 most recent attacks</span> from that point forward.
+        </div>
+
+        <h2>API and Technical Details</h2>
+
+        <div class="question">Which Torn API endpoints are used?</div>
+        <div class="answer">
+            The War Hits Tracker uses the following Torn API v2 endpoints:
+            <ul>
+                <li><code>/user/basic</code> - Your profile information</li>
+                <li><code>/user/faction</code> - Your faction details</li>
+                <li><code>/faction/wars</code> - Active and upcoming wars</li>
+                <li><code>/user/attacksfull</code> - Your attack history (simplified)</li>
+                <li><code>/torn/timestamp</code> - Current server time</li>
+            </ul>
+        </div>
+
+        <div class="question">What API key permissions are required?</div>
+        <div class="answer">
+            You need a <span class="highlight">Limited Access Key</span> or higher to use all features:
+            <ul>
+                <li><strong>Public Access:</strong> Basic profile and faction info (minimum for seeing war status)</li>
+                <li><strong>Limited Access:</strong> Required for accessing your attack history and hit counting</li>
+            </ul>
+        </div>
+
+        <div class="note">
+            <strong>Privacy Note:</strong> Your API key is only stored in the URL for bookmarking convenience. 
+            It is never sent to any server except Torn's official API. All processing happens in your browser.
+        </div>
+
+        <h2>Understanding the Display</h2>
+
+        <div class="question">What's the difference between active and upcoming wars?</div>
+        <div class="answer">
+            <ul>
+                <li><strong>Active Wars (Red ⚠):</strong> Wars that have already started. Shows current scores and your hit count.</li>
+                <li><strong>Upcoming Wars (Orange 📅):</strong> Scheduled wars that haven't started yet. Shows the start time but no hits yet.</li>
+            </ul>
+        </div>
+
+        <div class="question">How often does the data refresh?</div>
+        <div class="answer">
+            The tracker fetches fresh data from the Torn API every time you load or refresh the page. 
+            For real-time updates, simply refresh your browser.
+        </div>
+
+        <h2>Troubleshooting</h2>
+
+        <div class="question">Why is my hit count showing 0?</div>
+        <div class="answer">
+            This could happen if:
+            <ul>
+                <li>You haven't made any successful attacks yet in this war</li>
+                <li>Your attacks were unsuccessful (lost or drew)</li>
+                <li>You attacked players outside the enemy faction</li>
+                <li>Your API key doesn't have Limited access permissions</li>
+                <li>The attacks are older than your 1,000 most recent attacks</li>
+            </ul>
+        </div>
+
+        <div class="question">I'm getting an error message. What should I do?</div>
+        <div class="answer">
+            Common solutions:
+            <ul>
+                <li>Check that your API key is valid and hasn't been deleted</li>
+                <li>Ensure your API key has at least Limited access permissions</li>
+                <li>Try refreshing the page</li>
+                <li>Clear your browser cache and try again</li>
+            </ul>
+        </div>
+
+        <h2>Additional Information</h2>
+
+        <div class="question">Is this tool official?</div>
+        <div class="answer">
+            No, this is an independent tool created by a Torn player. It uses Torn's official API but is not affiliated with or endorsed by Torn City.
+        </div>
+
+        <div class="question">Can I bookmark my page?</div>
+        <div class="answer">
+            Yes! Your API key is included in the URL, so you can bookmark the page for quick access. 
+            Just be aware that anyone with access to your bookmarks can see your API key.
+        </div>
+
+        <div class="question">How can I report a bug or suggest a feature?</div>
+        <div class="answer">
+            This tool is hosted on GitHub Pages. Check the repository for contact information or to submit issues.
+        </div>
+
+        <div style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; text-align: center; color: #888;">
+            <p>War Hits Tracker for Torn City | Last Updated: October 2025</p>
+        </div>
+    </div>
+</body>
+</html>
