@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Torn - War Hits Tracker</title>
+    <script src="torn-api.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -114,10 +115,35 @@
         <!-- Tracker Content (shown when API key is in URL) -->
         <div id="trackerContent" class="tracker-content">
             <p class="subtitle">Active War Hits Tracking</p>
-            <div class="api-key-display">
-                <strong>API Key:</strong> <span id="displayApiKey"></span>
+            
+            <!-- Loading State -->
+            <div id="loadingState" style="display: none; padding: 20px; text-align: center;">
+                <p>Loading your information...</p>
             </div>
-            <p>War hits tracking will be implemented here...</p>
+            
+            <!-- Error State -->
+            <div id="errorState" style="display: none; padding: 20px; background-color: #ffebee; border-radius: 4px;">
+                <strong style="color: #c62828;">Error:</strong>
+                <p id="errorMessage" style="color: #c62828; margin-top: 10px;"></p>
+            </div>
+            
+            <!-- User Info Display -->
+            <div id="userInfo" style="display: none;">
+                <div style="background-color: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0;">Player Information</h3>
+                    <p><strong>Username:</strong> <span id="username"></span> [<span id="userId"></span>]</p>
+                    <p><strong>Faction:</strong> <span id="factionName"></span> [<span id="factionId"></span>]</p>
+                </div>
+                
+                <div id="warInfo" style="background-color: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0;">War Status</h3>
+                    <div id="warContent"></div>
+                </div>
+                
+                <div style="margin-top: 20px; padding: 15px; background-color: #e8f5e9; border-radius: 4px;">
+                    <p><strong>Next Step:</strong> War hits tracking functionality will be implemented here...</p>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -133,10 +159,10 @@
             const apiKey = getApiKeyFromUrl();
             
             if (apiKey && apiKey.trim() !== '') {
-                // API key is present in URL, show tracker content
+                // API key is present in URL, show tracker content and load data
                 document.getElementById('apiKeyForm').style.display = 'none';
                 document.getElementById('trackerContent').classList.add('active');
-                document.getElementById('displayApiKey').textContent = apiKey;
+                loadUserData(apiKey);
             } else {
                 // No API key, show the form
                 document.getElementById('apiKeyForm').style.display = 'block';
