@@ -96,10 +96,14 @@
         <div class="answer">
             A war hit is counted when <strong>all</strong> of the following conditions are met:
             <ul>
-                <li>The attack is part of a <span class="highlight">ranked war</span> (the <code>is_ranked_war</code> flag must be true)</li>
+                <li>The attack occurred <span class="highlight">after the war started</span> (filtered by war start time)</li>
                 <li>The defender is a member of the <span class="highlight">enemy faction</span> you are at war with</li>
                 <li>The attack was <span class="highlight">successful</span> and you gained respect (respect_gain > 0)</li>
             </ul>
+            <div class="note">
+                <strong>Note:</strong> The tracker uses the simplified <code>/user/attacksfull</code> endpoint and filters attacks 
+                from the war start time. Any successful attack against the enemy faction during the war period is counted as a war hit.
+            </div>
         </div>
 
         <div class="question">What doesn't count as a war hit?</div>

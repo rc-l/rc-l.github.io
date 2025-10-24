@@ -88,7 +88,7 @@ async function fetchTimestamp(apiKey) {
  * @returns {Promise<Object>} Attacks data
  */
 async function fetchUserAttacks(apiKey, fromTimestamp) {
-    const url = `${API_BASE_URL}/user/attacksfull?from=${fromTimestamp}&limit=1000`;
+    const url = `${API_BASE_URL}/user/attacksfull?from=${fromTimestamp}&limit=1000&timestamp=${Date.now()}`;
     const response = await fetch(url, {
         headers: {
             'Authorization': `ApiKey ${apiKey}`
@@ -212,25 +212,38 @@ function countWarHits(attacksData, enemyFactionId) {
     }
     
     let hitCount = 0;
-    const attacks = Object.values(attacksData.attacks);
+    const attacks = Array.isArray(attacksData.attacks) ? attacksData.attacks : Object.values(attacksData.attacks);
+    
+    console.log('Counting war hits for enemy faction:', enemyFactionId);
+    console.log('Total attacks to check:', attacks.length);
     
     for (const attack of attacks) {
-        // Check if it's a ranked war attack
-        if (!attack.is_ranked_war) {
-            continue;
-        }
+        // Log each attack for debugging
+        console.log('Checking attack:', {
+            id: attack.id,
+            defender_faction: attack.defender?.faction_id,
+            respect_gain: attack.respect_gain,
+            result: attack.result
+        });
         
         // Check if defender is from the enemy faction
-        if (attack.defender?.faction?.id !== enemyFactionId) {
+        if (attack.defender?.faction_id !== enemyFactionId) {
+            console.log('  -> Skipped: Wrong faction');
             continue;
         }
         
         // Check if attack was successful (respect gained)
+        // Note: attacksfull doesn't include is_ranked_war flag, but if we filtered by war start time
+        // and the defender is in the enemy faction, it should be a war hit
         if (attack.respect_gain && attack.respect_gain > 0) {
+            console.log('  -> COUNTED as war hit!');
             hitCount++;
+        } else {
+            console.log('  -> Skipped: No respect gained');
         }
     }
     
+    console.log('Total war hits counted:', hitCount);
     return hitCount;
 }
 
