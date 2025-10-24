@@ -3,10 +3,220 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Torn</title>
+    <title>Torn - War Hits Tracker</title>
+    <script src="torn-api.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .api-key-form {
+            margin-top: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            margin-top: 15px;
+            padding: 12px 24px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            border-radius: 4px;
+        }
+        .info p {
+            margin: 5px 0;
+            color: #555;
+            font-size: 14px;
+        }
+        .error {
+            color: #d32f2f;
+            margin-top: 10px;
+            display: none;
+        }
+        .tracker-content {
+            display: none;
+        }
+        .tracker-content.active {
+            display: block;
+        }
+        .api-key-display {
+            background-color: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+            word-break: break-all;
+            margin-bottom: 20px;
+        }
+        .faq-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 8px 16px;
+            background-color: #2196F3;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        .faq-button:hover {
+            background-color: #1976D2;
+        }
+    </style>
 </head>
 <body>
-    <h1>Welcome to Torn</h1>
-    <p>War hits</p>
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h1 style="margin: 0;">Torn War Hits Tracker</h1>
+            <a href="faq.html" class="faq-button" title="Frequently Asked Questions">
+                <span style="font-size: 20px;">❓</span> FAQ
+            </a>
+        </div>
+        
+        <!-- API Key Input Form (shown when no API key in URL) -->
+        <div id="apiKeyForm" class="api-key-form">
+            <p class="subtitle">Track your hits during faction wars</p>
+            
+            <label for="apiKey">Enter your Torn API Key:</label>
+            <input type="text" id="apiKey" placeholder="Enter your API key here" />
+            <p class="error" id="errorMsg">Please enter a valid API key</p>
+            
+            <button onclick="submitApiKey()">Start Tracking</button>
+            
+            <div class="info">
+                <p><strong>How to get your API key:</strong></p>
+                <p>1. Go to <a href="https://www.torn.com/preferences.php#tab=api" target="_blank">Torn Preferences - API</a></p>
+                <p>2. Copy your API key</p>
+                <p>3. Paste it above and click "Start Tracking"</p>
+                <p><strong>Note:</strong> Your API key will be included in the URL so you can bookmark this page for quick access.</p>
+            </div>
+        </div>
+        
+        <!-- Tracker Content (shown when API key is in URL) -->
+        <div id="trackerContent" class="tracker-content">
+            <p class="subtitle">Active War Hits Tracking</p>
+            
+            <!-- Loading State -->
+            <div id="loadingState" style="display: none; padding: 20px; text-align: center;">
+                <p>Loading your information...</p>
+            </div>
+            
+            <!-- Error State -->
+            <div id="errorState" style="display: none; padding: 20px; background-color: #ffebee; border-radius: 4px;">
+                <strong style="color: #c62828;">Error:</strong>
+                <p id="errorMessage" style="color: #c62828; margin-top: 10px;"></p>
+            </div>
+            
+            <!-- User Info Display -->
+            <div id="userInfo" style="display: none;">
+                <div style="background-color: #f9f9f9; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0;">Player Information</h3>
+                    <p><strong>Username:</strong> <span id="username"></span> [<span id="userId"></span>]</p>
+                    <p><strong>Faction:</strong> <span id="factionName"></span> [<span id="factionId"></span>]</p>
+                </div>
+                
+                <div id="warInfo" style="background-color: #fff3cd; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0;">War Status</h3>
+                    <div id="warContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Check if API key is in URL parameters
+        function getApiKeyFromUrl() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('apikey');
+        }
+
+        // Initialize page based on whether API key is present
+        function initializePage() {
+            const apiKey = getApiKeyFromUrl();
+            
+            if (apiKey && apiKey.trim() !== '') {
+                // API key is present in URL, show tracker content and load data
+                document.getElementById('apiKeyForm').style.display = 'none';
+                document.getElementById('trackerContent').classList.add('active');
+                loadUserData(apiKey);
+            } else {
+                // No API key, show the form
+                document.getElementById('apiKeyForm').style.display = 'block';
+                document.getElementById('trackerContent').classList.remove('active');
+            }
+        }
+
+        // Submit API key and redirect with it as URL parameter
+        function submitApiKey() {
+            const apiKeyInput = document.getElementById('apiKey');
+            const apiKey = apiKeyInput.value.trim();
+            const errorMsg = document.getElementById('errorMsg');
+            
+            if (apiKey === '') {
+                errorMsg.style.display = 'block';
+                return;
+            }
+            
+            errorMsg.style.display = 'none';
+            
+            // Redirect to same page with API key as parameter
+            window.location.href = `warhits.html?apikey=${encodeURIComponent(apiKey)}`;
+        }
+
+        // Allow Enter key to submit
+        document.addEventListener('DOMContentLoaded', function() {
+            initializePage();
+            
+            const apiKeyInput = document.getElementById('apiKey');
+            if (apiKeyInput) {
+                apiKeyInput.addEventListener('keypress', function(event) {
+                    if (event.key === 'Enter') {
+                        submitApiKey();
+                    }
+                });
+            }
+        });
+    </script>
 </body>
 </html>
