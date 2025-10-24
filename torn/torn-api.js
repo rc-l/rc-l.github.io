@@ -390,7 +390,7 @@ function displayWarInfo(warsData, userFaction, currentTimestamp, attacksData) {
                 if (!isUpcoming) {
                     const yourFaction = factions.find(f => f && f.id === userFaction?.id);
                     if (yourFaction && faction.score !== undefined && yourFaction.score !== undefined) {
-                        warHtml += ` - Score: ${yourFaction.score} : ${faction.score}`;
+                        warHtml += ` - Score: ${faction.score} : ${yourFaction.score}`;
                     }
                     
                     // Show hit counter for active wars
