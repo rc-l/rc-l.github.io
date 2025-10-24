@@ -6,6 +6,73 @@
 const API_BASE_URL = 'https://api.torn.com/v2';
 
 /**
+ * Validate API key permissions
+ * @param {string} apiKey - The Torn API key
+ * @returns {Promise<Object>} Validation result with {valid: boolean, missing: array, accessLevel: string}
+ */
+async function validateApiKey(apiKey) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/key/info`, {
+            headers: {
+                'Authorization': `ApiKey ${apiKey}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Failed to validate API key: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log('Key Info Data:', data);
+        
+        // Required permissions for the war hits tracker
+        // Format: category.selection (e.g., 'user.basic', 'faction.rankedwars')
+        const requiredPermissions = {
+            'torn': ['timestamp'],
+            'user': ['basic', 'faction', 'attacksfull'],
+            'faction': ['rankedwars']
+        };
+        
+        // Get selections from API response
+        const selections = data.info?.selections || {};
+        const accessLevel = data.info?.access?.level || 0;
+        const accessType = data.info?.access?.type || 'Unknown';
+        
+        // Collect all available permissions in "category.selection" format
+        const availablePermissions = [];
+        for (const [category, selectionArray] of Object.entries(selections)) {
+            if (Array.isArray(selectionArray)) {
+                for (const selection of selectionArray) {
+                    availablePermissions.push(`${category}.${selection}`);
+                }
+            }
+        }
+        
+        // Find missing permissions
+        const missingPermissions = [];
+        for (const [category, requiredSelections] of Object.entries(requiredPermissions)) {
+            const availableInCategory = selections[category] || [];
+            for (const selection of requiredSelections) {
+                if (!availableInCategory.includes(selection)) {
+                    missingPermissions.push(`${category}.${selection}`);
+                }
+            }
+        }
+        
+        return {
+            valid: missingPermissions.length === 0,
+            missing: missingPermissions,
+            accessLevel: accessLevel,
+            accessType: accessType,
+            allPermissions: availablePermissions
+        };
+    } catch (error) {
+        console.error('API Key Validation Error:', error);
+        throw error;
+    }
+}
+
+/**
  * Fetch user basic information
  * @param {string} apiKey - The Torn API key
  * @returns {Promise<Object>} User basic data including name and player_id

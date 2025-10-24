@@ -116,6 +116,32 @@
         .faq-button:hover {
             background-color: #1976D2;
         }
+        .warning {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        .warning.active {
+            display: block;
+        }
+        .warning strong {
+            color: #856404;
+        }
+        .warning p {
+            color: #856404;
+            margin: 5px 0;
+        }
+        .warning ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .warning li {
+            color: #856404;
+            margin: 5px 0;
+        }
     </style>
 </head>
 <body>
@@ -140,7 +166,7 @@
             <div class="info">
                 <p><strong>How to get your API key:</strong></p>
                 <p>1. Go to <a href="https://www.torn.com/preferences.php#tab=api" target="_blank">Torn Preferences - API</a></p>
-                <p>2. Copy your API key</p>
+                <p>2. Create or select an API key with <strong>"Limited Access"</strong> level</p>
                 <p>3. Paste it above and click "Start Tracking"</p>
                 <p><strong>Note:</strong> Your API key will be securely saved in your browser. You'll stay logged in until you click "Logout".</p>
             </div>
@@ -156,6 +182,15 @@
             <!-- Loading State -->
             <div id="loadingState" style="display: none; padding: 20px; text-align: center;">
                 <p>Loading your information...</p>
+            </div>
+            
+            <!-- Permission Warning -->
+            <div id="permissionWarning" class="warning">
+                <strong>⚠️ API Key Permission Issue</strong>
+                <p>Your API key does not have the required permissions for this tracker to work properly.</p>
+                <p><strong>Missing permissions:</strong></p>
+                <ul id="missingPermissionsList"></ul>
+                <p>Please create a new API key with <strong>"Limited Access"</strong> level at <a href="https://www.torn.com/preferences.php#tab=api" target="_blank">Torn Preferences - API</a></p>
             </div>
             
             <!-- Error State -->
@@ -212,14 +247,16 @@
         }
 
         // Initialize page based on whether API key is in cookie
-        function initializePage() {
+        async function initializePage() {
             const apiKey = getApiKey();
             
             if (apiKey && apiKey.trim() !== '') {
-                // API key is present in cookie, show tracker content and load data
+                // API key is present in localStorage, show tracker content and load data
                 document.getElementById('apiKeyForm').style.display = 'none';
                 document.getElementById('trackerContent').classList.add('active');
-                loadUserData(apiKey);
+                
+                // Validate API key first, then load data
+                await validateAndLoadData(apiKey);
             } else {
                 // No API key, show the form
                 document.getElementById('apiKeyForm').style.display = 'block';
@@ -227,26 +264,106 @@
             }
         }
 
+        // Validate API key and load data
+        async function validateAndLoadData(apiKey) {
+            try {
+                // Show loading state
+                document.getElementById('loadingState').style.display = 'block';
+                
+                // Validate API key permissions
+                const validation = await validateApiKey(apiKey);
+                console.log('Validation result:', validation);
+                
+                // Check if key has required permissions
+                if (!validation.valid) {
+                    displayPermissionWarning(validation.missing);
+                } else {
+                    hidePermissionWarning();
+                }
+                
+                // Load user data regardless (some features may still work)
+                await loadUserData(apiKey);
+                
+            } catch (error) {
+                console.error('Validation or loading error:', error);
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('errorState').style.display = 'block';
+                document.getElementById('errorMessage').textContent = error.message;
+            }
+        }
+
+        // Display permission warning with missing permissions
+        function displayPermissionWarning(missingPermissions) {
+            const warningDiv = document.getElementById('permissionWarning');
+            const listElement = document.getElementById('missingPermissionsList');
+            
+            // Clear previous list
+            listElement.innerHTML = '';
+            
+            // Add missing permissions to list
+            missingPermissions.forEach(perm => {
+                const li = document.createElement('li');
+                li.textContent = perm;
+                listElement.appendChild(li);
+            });
+            
+            // Show warning
+            warningDiv.classList.add('active');
+        }
+
+        // Hide permission warning
+        function hidePermissionWarning() {
+            const warningDiv = document.getElementById('permissionWarning');
+            warningDiv.classList.remove('active');
+        }
+
         // Submit API key and save to localStorage
-        function submitApiKey() {
+        async function submitApiKey() {
             const apiKeyInput = document.getElementById('apiKey');
             const apiKey = apiKeyInput.value.trim();
             const errorMsg = document.getElementById('errorMsg');
             
             if (apiKey === '') {
+                errorMsg.textContent = 'Please enter a valid API key';
                 errorMsg.style.display = 'block';
                 return;
             }
             
             errorMsg.style.display = 'none';
             
-            // Save API key to localStorage
-            if (saveApiKey(apiKey)) {
-                // Reload page to show tracker
-                window.location.reload();
-            } else {
-                errorMsg.textContent = 'Failed to save API key. Please check your browser settings.';
+            // Disable button and show loading state
+            const submitButton = event.target;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Validating...';
+            
+            try {
+                // Validate API key before saving
+                const validation = await validateApiKey(apiKey);
+                
+                if (!validation.valid) {
+                    errorMsg.innerHTML = `<strong>API key does not have required permissions:</strong><br>Missing: ${validation.missing.join(', ')}<br>Please create a "Limited Access" API key.`;
+                    errorMsg.style.display = 'block';
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Start Tracking';
+                    return;
+                }
+                
+                // Save API key to localStorage
+                if (saveApiKey(apiKey)) {
+                    // Reload page to show tracker
+                    window.location.reload();
+                } else {
+                    errorMsg.textContent = 'Failed to save API key. Please check your browser settings.';
+                    errorMsg.style.display = 'block';
+                    submitButton.disabled = false;
+                    submitButton.textContent = 'Start Tracking';
+                }
+            } catch (error) {
+                console.error('Validation error:', error);
+                errorMsg.textContent = 'Failed to validate API key. Please check your key and try again.';
                 errorMsg.style.display = 'block';
+                submitButton.disabled = false;
+                submitButton.textContent = 'Start Tracking';
             }
         }
 
