@@ -57,6 +57,19 @@
         button:hover {
             background-color: #45a049;
         }
+        .logout-button {
+            margin-top: 15px;
+            padding: 8px 16px;
+            background-color: #f44336;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .logout-button:hover {
+            background-color: #d32f2f;
+        }
         .info {
             margin-top: 20px;
             padding: 15px;
@@ -129,13 +142,16 @@
                 <p>1. Go to <a href="https://www.torn.com/preferences.php#tab=api" target="_blank">Torn Preferences - API</a></p>
                 <p>2. Copy your API key</p>
                 <p>3. Paste it above and click "Start Tracking"</p>
-                <p><strong>Note:</strong> Your API key will be included in the URL so you can bookmark this page for quick access.</p>
+                <p><strong>Note:</strong> Your API key will be securely saved in your browser. You'll stay logged in until you click "Logout".</p>
             </div>
         </div>
         
-        <!-- Tracker Content (shown when API key is in URL) -->
+        <!-- Tracker Content (shown when API key is in cookie) -->
         <div id="trackerContent" class="tracker-content">
-            <p class="subtitle">Active War Hits Tracking</p>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <p class="subtitle" style="margin: 0;">Active War Hits Tracking</p>
+                <button class="logout-button" onclick="logout()">Logout</button>
+            </div>
             
             <!-- Loading State -->
             <div id="loadingState" style="display: none; padding: 20px; text-align: center;">
@@ -165,18 +181,42 @@
     </div>
 
     <script>
-        // Check if API key is in URL parameters
-        function getApiKeyFromUrl() {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('apikey');
+        // Local storage management functions (works with file:// protocol)
+        function saveApiKey(apiKey) {
+            try {
+                localStorage.setItem('torn_api_key', apiKey);
+                return true;
+            } catch (e) {
+                console.error('Failed to save API key:', e);
+                return false;
+            }
         }
 
-        // Initialize page based on whether API key is present
+        function getApiKey() {
+            try {
+                return localStorage.getItem('torn_api_key');
+            } catch (e) {
+                console.error('Failed to retrieve API key:', e);
+                return null;
+            }
+        }
+
+        function removeApiKey() {
+            try {
+                localStorage.removeItem('torn_api_key');
+                return true;
+            } catch (e) {
+                console.error('Failed to remove API key:', e);
+                return false;
+            }
+        }
+
+        // Initialize page based on whether API key is in cookie
         function initializePage() {
-            const apiKey = getApiKeyFromUrl();
+            const apiKey = getApiKey();
             
             if (apiKey && apiKey.trim() !== '') {
-                // API key is present in URL, show tracker content and load data
+                // API key is present in cookie, show tracker content and load data
                 document.getElementById('apiKeyForm').style.display = 'none';
                 document.getElementById('trackerContent').classList.add('active');
                 loadUserData(apiKey);
@@ -187,7 +227,7 @@
             }
         }
 
-        // Submit API key and redirect with it as URL parameter
+        // Submit API key and save to localStorage
         function submitApiKey() {
             const apiKeyInput = document.getElementById('apiKey');
             const apiKey = apiKeyInput.value.trim();
@@ -200,8 +240,20 @@
             
             errorMsg.style.display = 'none';
             
-            // Redirect to same page with API key as parameter
-            window.location.href = `warhits.html?apikey=${encodeURIComponent(apiKey)}`;
+            // Save API key to localStorage
+            if (saveApiKey(apiKey)) {
+                // Reload page to show tracker
+                window.location.reload();
+            } else {
+                errorMsg.textContent = 'Failed to save API key. Please check your browser settings.';
+                errorMsg.style.display = 'block';
+            }
+        }
+
+        // Logout function to clear API key
+        function logout() {
+            removeApiKey();
+            window.location.reload();
         }
 
         // Allow Enter key to submit
