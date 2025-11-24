@@ -54,7 +54,7 @@ function getUsername() {
 }
 
 // Initialize authentication header on page load
-function initAuthHeader() {
+async function initAuthHeader() {
     const authContainer = document.getElementById('authContainer');
     if (!authContainer) {
         console.error('Auth container not found');
@@ -62,11 +62,31 @@ function initAuthHeader() {
     }
     
     const apiKey = getApiKey();
-    const username = getUsername();
     
     if (apiKey && apiKey.trim() !== '') {
-        // User is logged in
-        showLoggedInState(username || 'User');
+        // User is logged in - try to get username
+        let username = getUsername();
+        
+        // If no cached username, fetch it
+        if (!username) {
+            try {
+                const response = await fetch(`https://api.torn.com/v2/user/basic`, {
+                    headers: { 'Authorization': `ApiKey ${apiKey}` }
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    username = data.profile?.name || 'User';
+                    saveUsername(username);
+                } else {
+                    username = 'User';
+                }
+            } catch (error) {
+                console.error('Failed to fetch username:', error);
+                username = 'User';
+            }
+        }
+        
+        showLoggedInState(username);
     } else {
         // User is not logged in
         showLoggedOutState();
