@@ -5,42 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Torn - War Hits Tracker</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="auth.js"></script>
     <script src="torn-api.js"></script>
 </head>
 <body>
+    <div style="display: flex; justify-content: flex-end; max-width: 800px; margin: 0 auto; padding: 10px 20px;">
+        <div id="authContainer" class="header-auth"></div>
+    </div>
     <div class="container">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
             <h1 style="margin: 0;">Torn War Hits Tracker</h1>
-            <a href="faq.html" class="faq-button" title="Frequently Asked Questions">
-                <span style="font-size: 20px;">❓</span> FAQ
-            </a>
+            <div style="display: flex; gap: 10px;">
+                <a href="index.html" class="faq-button" style="background-color: #4CAF50;" title="Back to Home">
+                    ← Back
+                </a>
+                <a href="faq.html" class="faq-button" title="Frequently Asked Questions">
+                    <span style="font-size: 20px;">❓</span> FAQ
+                </a>
+            </div>
         </div>
         
-        <!-- API Key Input Form (shown when no API key in URL) -->
-        <div id="apiKeyForm" class="api-key-form">
+        <!-- Tracker Content -->
+        <div id="trackerContent">
             <p class="subtitle">Track your hits during faction wars</p>
-            
-            <label for="apiKey">Enter your Torn API Key:</label>
-            <input type="text" id="apiKey" placeholder="Enter your API key here" />
-            <p class="error" id="errorMsg">Please enter a valid API key</p>
-            
-            <button onclick="submitApiKey()">Start Tracking</button>
-            
-            <div class="info">
-                <p><strong>How to get your API key:</strong></p>
-                <p>1. Go to <a href="https://www.torn.com/preferences.php#tab=api" target="_blank">Torn Preferences - API</a></p>
-                <p>2. Create or select an API key with <strong>"Limited Access"</strong> level</p>
-                <p>3. Paste it above and click "Start Tracking"</p>
-                <p><strong>Note:</strong> Your API key will be securely saved in your browser. You'll stay logged in until you click "Logout".</p>
-            </div>
-        </div>
-        
-        <!-- Tracker Content (shown when API key is in cookie) -->
-        <div id="trackerContent" class="tracker-content">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <p class="subtitle" style="margin: 0;">Active War Hits Tracking</p>
-                <button class="logout-button" onclick="logout()">Logout</button>
-            </div>
             
             <!-- Loading State -->
             <div id="loadingState" style="display: none; padding: 20px; text-align: center;">
@@ -79,51 +66,25 @@
     </div>
 
     <script>
-        // Local storage management functions (works with file:// protocol)
-        function saveApiKey(apiKey) {
-            try {
-                localStorage.setItem('torn_api_key', apiKey);
-                return true;
-            } catch (e) {
-                console.error('Failed to save API key:', e);
-                return false;
-            }
-        }
-
-        function getApiKey() {
-            try {
-                return localStorage.getItem('torn_api_key');
-            } catch (e) {
-                console.error('Failed to retrieve API key:', e);
-                return null;
-            }
-        }
-
-        function removeApiKey() {
-            try {
-                localStorage.removeItem('torn_api_key');
-                return true;
-            } catch (e) {
-                console.error('Failed to remove API key:', e);
-                return false;
-            }
-        }
-
-        // Initialize page based on whether API key is in cookie
+        // Initialize page based on whether API key is present
         async function initializePage() {
             const apiKey = getApiKey();
             
             if (apiKey && apiKey.trim() !== '') {
-                // API key is present in localStorage, show tracker content and load data
-                document.getElementById('apiKeyForm').style.display = 'none';
-                document.getElementById('trackerContent').classList.add('active');
-                
-                // Validate API key first, then load data
+                // API key is present, validate and load data
                 await validateAndLoadData(apiKey);
             } else {
-                // No API key, show the form
-                document.getElementById('apiKeyForm').style.display = 'block';
-                document.getElementById('trackerContent').classList.remove('active');
+                // No API key, show message
+                document.getElementById('trackerContent').innerHTML = `
+                    <div class="info">
+                        <p><strong>Please log in to track your war hits</strong></p>
+                        <p>Enter your Torn API key in the login field above.</p>
+                        <p><strong>How to get your API key:</strong></p>
+                        <p>1. Go to <a href="https://www.torn.com/preferences.php#tab=api" target="_blank">Torn Preferences - API</a></p>
+                        <p>2. Create or select an API key with <strong>"Limited Access"</strong> level</p>
+                        <p>3. Enter it in the login field at the top-right of this page</p>
+                    </div>
+                `;
             }
         }
 
@@ -180,75 +141,8 @@
             warningDiv.classList.remove('active');
         }
 
-        // Submit API key and save to localStorage
-        async function submitApiKey() {
-            const apiKeyInput = document.getElementById('apiKey');
-            const apiKey = apiKeyInput.value.trim();
-            const errorMsg = document.getElementById('errorMsg');
-            
-            if (apiKey === '') {
-                errorMsg.textContent = 'Please enter a valid API key';
-                errorMsg.style.display = 'block';
-                return;
-            }
-            
-            errorMsg.style.display = 'none';
-            
-            // Disable button and show loading state
-            const submitButton = event.target;
-            submitButton.disabled = true;
-            submitButton.textContent = 'Validating...';
-            
-            try {
-                // Validate API key before saving
-                const validation = await validateApiKey(apiKey);
-                
-                if (!validation.valid) {
-                    errorMsg.innerHTML = `<strong>API key does not have required permissions:</strong><br>Missing: ${validation.missing.join(', ')}<br>Please create a "Limited Access" API key.`;
-                    errorMsg.style.display = 'block';
-                    submitButton.disabled = false;
-                    submitButton.textContent = 'Start Tracking';
-                    return;
-                }
-                
-                // Save API key to localStorage
-                if (saveApiKey(apiKey)) {
-                    // Reload page to show tracker
-                    window.location.reload();
-                } else {
-                    errorMsg.textContent = 'Failed to save API key. Please check your browser settings.';
-                    errorMsg.style.display = 'block';
-                    submitButton.disabled = false;
-                    submitButton.textContent = 'Start Tracking';
-                }
-            } catch (error) {
-                console.error('Validation error:', error);
-                errorMsg.textContent = 'Failed to validate API key. Please check your key and try again.';
-                errorMsg.style.display = 'block';
-                submitButton.disabled = false;
-                submitButton.textContent = 'Start Tracking';
-            }
-        }
-
-        // Logout function to clear API key
-        function logout() {
-            removeApiKey();
-            window.location.reload();
-        }
-
-        // Allow Enter key to submit
-        document.addEventListener('DOMContentLoaded', function() {
-            initializePage();
-            
-            const apiKeyInput = document.getElementById('apiKey');
-            if (apiKeyInput) {
-                apiKeyInput.addEventListener('keypress', function(event) {
-                    if (event.key === 'Enter') {
-                        submitApiKey();
-                    }
-                });
-            }
-        });
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', initializePage);
     </script>
 </body>
 </html>
