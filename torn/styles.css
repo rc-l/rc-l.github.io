@@ -21,6 +21,14 @@ h1 {
     margin-bottom: 10px;
 }
 
+/* Header authentication */
+.header-auth {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: relative;
+}
+
 h2 {
     color: #2196F3;
     margin-top: 30px;
