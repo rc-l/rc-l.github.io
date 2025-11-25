@@ -48,27 +48,14 @@ async function validateApiKey(apiKey) {
             }
         }
         
-        // Find missing permissions
-        const missingPermissions = [];
-        for (const [category, requiredSelections] of Object.entries(requiredPermissions)) {
-            const availableInCategory = selections[category] || [];
-            for (const selection of requiredSelections) {
-                if (!availableInCategory.includes(selection)) {
-                    missingPermissions.push(`${category}.${selection}`);
-                }
-            }
-        }
-        
         return {
-            valid: missingPermissions.length === 0,
-            missing: missingPermissions,
-            accessLevel: accessLevel,
-            accessType: accessType,
-            allPermissions: availablePermissions
+            valid: true,
+            accessLevel: accessType, // 'Public', 'Minimal', 'Limited', 'Full', 'Custom'
+            permissions: availablePermissions
         };
     } catch (error) {
-        console.error('API Key Validation Error:', error);
-        throw error;
+        console.error('API Key validation error:', error);
+        return { valid: false, error: error.message };
     }
 }
 
@@ -164,6 +151,55 @@ async function fetchUserAttacks(apiKey, fromTimestamp) {
     if (!response.ok) {
         throw new Error(`Failed to fetch attacks: ${response.status} ${response.statusText}`);
     }
+    return await response.json();
+}
+
+/**
+ * Fetch user logs
+ * @param {string} apiKey - The Torn API key
+ * @param {Object} options - Query options (from, to, limit, log, cat)
+ * @returns {Promise<Object>} The logs data
+ */
+async function fetchUserLogs(apiKey, options = {}) {
+    const params = new URLSearchParams();
+    if (options.from) params.append('from', options.from);
+    if (options.to) params.append('to', options.to);
+    if (options.limit) params.append('limit', options.limit);
+    if (options.log) params.append('log', options.log); // Log IDs
+    if (options.cat) params.append('cat', options.cat); // Category ID
+
+    const url = `${API_BASE_URL}/user/log?${params.toString()}`;
+    
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `ApiKey ${apiKey}`
+        }
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch logs: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    return await response.json();
+}
+
+/**
+ * Fetch log categories
+ * @param {string} apiKey - The Torn API key
+ * @returns {Promise<Object>} The log categories
+ */
+async function fetchLogCategories(apiKey) {
+    const response = await fetch(`${API_BASE_URL}/torn/logcategories`, {
+        headers: {
+            'Authorization': `ApiKey ${apiKey}`
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to fetch log categories: ${response.status}`);
+    }
+
     return await response.json();
 }
 
