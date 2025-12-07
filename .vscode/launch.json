@@ -1,0 +1,10 @@
+{
+    "configurations": [
+        {
+            "type": "chrome",
+            "name": "local_files",
+            "request": "launch",
+            "url": "C:/Users/ruudl/local/repos/rc-l.github.io/torn/index.html"
+        }
+    ]
+}

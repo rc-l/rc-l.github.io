@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<!--
+    Property Rentals Tracker
+    
+    Description:
+    This page allows Torn players to track and manage their property rentals.
+    It displays all owned properties (rented and vacant) with lease status and
+    provides tools to monitor when lease extensions should be offered.
+    
+    Requirements:
+    1. Show all properties owned by the user (rented and vacant)
+    2. Exclude properties the user is living in
+    3. Display property ID (as clickable link to property info), property type, tenant name, days remaining, and status
+    4. Show lease extension status with color coding:
+       * OK (green) - More than 10 days remaining
+       * EXTEND (orange) - 5-10 days remaining (optimal time to offer extension)
+       * URGENT (red) - Less than 5 days remaining
+       * OFFERED (grey) - Lease extension already offered
+       * VACANT (purple) - Property has no tenant
+    5. Summary dashboard showing count of properties by status (only rented properties)
+    6. Vacant properties should appear at the top of the list
+    7. Rented properties sorted by urgency (fewest days remaining first)
+    8. Action buttons:
+       * Repeat emoji (🔁) - Links to lease extension page when status is EXTEND and extension not yet offered
+       * Crossmark (❌) - Hide property from list (persistent across sessions)
+       * Eye (👁️) - Unhide property
+    9. Show/Hide hidden properties toggle button
+    10. Hidden properties stored in localStorage
+    11. Only make API call on page load/refresh, not when hiding/unhiding properties
+    12. Use API endpoint: user/properties?filters=ownedByUser
+-->
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Property Rentals Tracker - Torn Tools</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="auth.js"></script>
+    <script src="torn-api.js"></script>
+    <style>
+        .properties-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .properties-table th,
+        .properties-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .properties-table th {
+            background-color: #2196F3;
+            color: white;
+            font-weight: bold;
+        }
+
+        .properties-table tr:hover {
+            background-color: #f5f5f5;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .status-ok {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        .status-extend {
+            background-color: #FF9800;
+            color: white;
+        }
+
+        .status-urgent {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .status-offered {
+            background-color: #9E9E9E;
+            color: white;
+        }
+
+        .action-arrow {
+            display: inline-block;
+            padding: 4px 8px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 16px;
+            transition: transform 0.2s;
+        }
+
+        .action-arrow.active {
+            opacity: 1;
+        }
+
+        .action-arrow.active:hover {
+            transform: scale(1.2);
+        }
+
+        .action-arrow.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+
+        .info-box {
+            background-color: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+            border-left: 4px solid #2196F3;
+        }
+
+        .no-properties {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+            font-style: italic;
+        }
+
+        .summary {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .summary-card {
+            flex: 1;
+            padding: 15px;
+            border-radius: 4px;
+            background-color: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .summary-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .summary-card .value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            text-align: center;
+        }
+
+        .hide-button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 0;
+            margin: 0;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.2s;
+        }
+
+        .hide-button:hover {
+            background: none;
+            outline: none;
+            transform: scale(1.2);
+        }
+
+        .hide-button:focus {
+            outline: none;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .action-buttons > * {
+            line-height: 1;
+        }
+
+        .show-hidden-toggle {
+            text-align: right;
+            margin: 20px 0;
+        }
+
+        .toggle-hidden-btn {
+            padding: 8px 16px;
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .toggle-hidden-btn:hover {
+            background-color: #1976D2;
+        }
+
+        .status-vacant {
+            background-color: #9C27B0;
+            color: white;
+        }
+
+        .row-hidden {
+            opacity: 0.5;
+            background-color: #f5f5f5;
+        }
+    </style>
+</head>
+<body>
+    <div style="display: flex; justify-content: space-between; align-items: center; max-width: 1200px; margin: 0 auto; padding: 10px 20px;">
+        <a href="index.html" class="back-button" style="margin: 0;">← Back to Tools</a>
+        <div id="authContainer" class="header-auth"></div>
+    </div>
+
+    <div class="container" style="max-width: 1200px;">
+        <h1>Property Rentals Tracker</h1>
+        <p class="subtitle">Monitor your rented properties and manage lease extensions</p>
+
+        <div class="info-box">
+            <strong>Lease Extension Timing:</strong>
+            <ul style="margin: 10px 0;">
+                <li><strong style="color: #4CAF50;">OK</strong> - More than 10 days remaining</li>
+                <li><strong style="color: #FF9800;">EXTEND</strong> - 5-10 days remaining (optimal time to offer extension)</li>
+                <li><strong style="color: #f44336;">URGENT</strong> - Less than 5 days remaining (offer extension immediately!)</li>
+                <li><strong style="color: #9E9E9E;">OFFERED</strong> - Lease extension already offered</li>
+            </ul>
+        </div>
+
+        <div id="summarySection"></div>
+        <div class="show-hidden-toggle">
+            <button id="toggleHiddenBtn" class="toggle-hidden-btn" onclick="toggleShowHidden()">Show Hidden Properties</button>
+        </div>
+        <div id="propertiesSection"></div>
+    </div>
+
+    <script>
+        let propertiesData = [];
+        let showHidden = false;
+
+        // Hidden properties management
+        function getHiddenProperties() {
+            const hidden = localStorage.getItem('hidden_properties');
+            return hidden ? JSON.parse(hidden) : [];
+        }
+
+        function saveHiddenProperties(hiddenList) {
+            localStorage.setItem('hidden_properties', JSON.stringify(hiddenList));
+        }
+
+        function togglePropertyHidden(propertyId) {
+            const hidden = getHiddenProperties();
+            const index = hidden.indexOf(propertyId);
+            
+            if (index > -1) {
+                hidden.splice(index, 1);
+            } else {
+                hidden.push(propertyId);
+            }
+            
+            saveHiddenProperties(hidden);
+            renderProperties();
+        }
+
+        function toggleShowHidden() {
+            showHidden = !showHidden;
+            const btn = document.getElementById('toggleHiddenBtn');
+            btn.textContent = showHidden ? 'Hide Hidden Properties' : 'Show Hidden Properties';
+            renderProperties();
+        }
+
+        async function loadProperties() {
+            const propertiesSection = document.getElementById('propertiesSection');
+            const summarySection = document.getElementById('summarySection');
+            
+            propertiesSection.innerHTML = '<div class="loading">Loading properties...</div>';
+
+            try {
+                const apiKey = getApiKey();
+                if (!apiKey) {
+                    throw new Error('No API key found. Please log in first.');
+                }
+
+                // Fetch all properties with pagination
+                let allProperties = [];
+                let url = 'https://api.torn.com/v2/user/properties?filters=ownedByUser&offset=0&limit=100';
+                
+                while (url) {
+                    const response = await fetch(url, {
+                        headers: {
+                            'Authorization': `ApiKey ${apiKey}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+                    }
+
+                    const data = await response.json();
+                    console.log('Properties data page:', data);
+                    
+                    allProperties = allProperties.concat(data.properties || []);
+                    
+                    // Check for next page
+                    url = data._metadata?.links?.next || null;
+                }
+
+                console.log('Total properties loaded:', allProperties.length);
+                propertiesData = allProperties;
+                
+                renderProperties();
+
+            } catch (error) {
+                console.error('Error loading properties:', error);
+                propertiesSection.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        function renderProperties() {
+            const propertiesSection = document.getElementById('propertiesSection');
+            const summarySection = document.getElementById('summarySection');
+
+            try {
+
+                const hiddenProperties = getHiddenProperties();
+
+                // Filter properties: exclude only the one user is living in
+                let relevantProperties = propertiesData.filter(prop => {
+                    // Exclude property if user is living in it (status 'in_use')
+                    if (prop.status === 'in_use') return false;
+                    return true;
+                });
+
+                console.log('Relevant properties after filtering:', relevantProperties);
+
+                // Apply hidden filter if not showing hidden
+                if (!showHidden) {
+                    relevantProperties = relevantProperties.filter(prop => !hiddenProperties.includes(prop.id));
+                }
+
+                if (relevantProperties.length === 0) {
+                    propertiesSection.innerHTML = '<div class="no-properties">You don\'t have any properties to display.</div>';
+                    summarySection.innerHTML = '';
+                    return;
+                }
+
+                // Count only rented properties for stats (status 'rented' or 'none')
+                const rentedProperties = relevantProperties.filter(prop => prop.status === 'rented' || prop.status === 'none');
+
+                // Calculate summary stats (only for rented properties)
+                const stats = {
+                    total: rentedProperties.length,
+                    ok: 0,
+                    extend: 0,
+                    urgent: 0,
+                    offered: 0
+                };
+
+                rentedProperties.forEach(prop => {
+                    const status = getLeaseStatus(prop);
+                    stats[status]++;
+                });
+
+                // Render summary
+                summarySection.innerHTML = `
+                    <div class="summary">
+                        <div class="summary-card">
+                            <h3>Total Rented</h3>
+                            <div class="value">${stats.total}</div>
+                        </div>
+                        <div class="summary-card" style="background-color: #e8f5e9;">
+                            <h3>OK</h3>
+                            <div class="value" style="color: #4CAF50;">${stats.ok}</div>
+                        </div>
+                        <div class="summary-card" style="background-color: #fff3e0;">
+                            <h3>Need Extension</h3>
+                            <div class="value" style="color: #FF9800;">${stats.extend}</div>
+                        </div>
+                        <div class="summary-card" style="background-color: #ffebee;">
+                            <h3>Urgent</h3>
+                            <div class="value" style="color: #f44336;">${stats.urgent}</div>
+                        </div>
+                        <div class="summary-card" style="background-color: #f5f5f5;">
+                            <h3>Offered</h3>
+                            <div class="value" style="color: #9E9E9E;">${stats.offered}</div>
+                        </div>
+                    </div>
+                `;
+
+                // Render properties table
+                let tableHTML = `
+                    <table class="properties-table">
+                        <thead>
+                            <tr>
+                                <th>Property ID</th>
+                                <th>Property Type</th>
+                                <th>Tenant</th>
+                                <th>Days Remaining</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+
+                // Sort: vacant first, then by days remaining
+                relevantProperties.sort((a, b) => {
+                    if (a.status === 'vacant' && b.status !== 'vacant') return -1;
+                    if (a.status !== 'vacant' && b.status === 'vacant') return 1;
+                    return (a.rental_period_remaining || 0) - (b.rental_period_remaining || 0);
+                });
+
+                relevantProperties.forEach(prop => {
+                    const isHidden = hiddenProperties.includes(prop.id);
+                    const rowClass = isHidden ? 'row-hidden' : '';
+                    
+                    let status, statusClass, statusLabel, tenantName, tenantId, daysRemaining;
+                    
+                    // Check if property is truly vacant (no rental_period_remaining or rental_period_remaining is 0)
+                    const isVacant = prop.status === 'vacant' || 
+                                    (prop.status === 'none' && (!prop.rental_period_remaining || prop.rental_period_remaining === 0));
+                    
+                    if (isVacant) {
+                        status = 'vacant';
+                        statusClass = 'status-vacant';
+                        statusLabel = 'VACANT';
+                        tenantName = '-';
+                        tenantId = '';
+                        daysRemaining = '-';
+                    } else if (prop.status === 'none' && prop.rental_period_remaining > 0) {
+                        // Properties with status 'none' but with rental period are rented (like some Palace rentals)
+                        status = getLeaseStatus(prop);
+                        statusClass = `status-${status}`;
+                        statusLabel = status.toUpperCase();
+                        tenantName = prop.rented_by?.name || '-';
+                        tenantId = prop.rented_by?.id || '';
+                        daysRemaining = `${prop.rental_period_remaining} days`;
+                    } else {
+                        // Status 'rented' and others
+                        status = getLeaseStatus(prop);
+                        statusClass = `status-${status}`;
+                        statusLabel = status.toUpperCase();
+                        tenantName = prop.rented_by?.name || 'Unknown';
+                        tenantId = prop.rented_by?.id || '';
+                        daysRemaining = `${prop.rental_period_remaining || 0} days`;
+                    }
+                    
+                    const propertyName = prop.property?.name || 'Unknown';
+
+                    // For vacant properties, enable the button to go to options page (to rent out)
+                    // For rented/none properties, enable only when extension is needed
+                    const canExtend = isVacant || 
+                                     ((prop.status === 'rented' || (prop.status === 'none' && prop.rental_period_remaining > 0)) && 
+                                      status === 'extend' && !prop.lease_extension);
+                    const arrowClass = canExtend ? 'active' : 'disabled';
+                    
+                    // Different URL for vacant properties (rent out) vs rented properties (extend)
+                    let arrowLink = '#';
+                    if (isVacant) {
+                        arrowLink = `https://www.torn.com/properties.php#/p=options&ID=${prop.id}`;
+                    } else if (canExtend) {
+                        arrowLink = `https://www.torn.com/properties.php#/p=options&ID=${prop.id}&tab=offerExtension`;
+                    }
+                    
+                    console.log(`Property ${prop.id} (${propertyName}): status=${prop.status}, isVacant=${isVacant}, canExtend=${canExtend}, rental_period_remaining=${prop.rental_period_remaining}`);
+                    
+                    const arrowTarget = canExtend ? '_blank' : '';
+                    const arrowClick = canExtend ? '' : 'onclick="return false;"';
+
+                    const hideButtonText = isHidden ? '<span style="opacity: 1;">👁️</span>' : '&#x274C;';
+                    const hideButtonTitle = isHidden ? 'Unhide property' : 'Hide property';
+
+                    const tenantCell = tenantId ? 
+                        `<a href="https://www.torn.com/profiles.php?XID=${tenantId}" target="_blank">${tenantName}</a>` : 
+                        tenantName;
+
+                    tableHTML += `
+                        <tr class="${rowClass}">
+                            <td><a href="https://www.torn.com/properties.php#/p=propertyinfo&profile=1&ID=${prop.id}" target="_blank">${prop.id}</a></td>
+                            <td>${propertyName}</td>
+                            <td>${tenantCell}</td>
+                            <td>${daysRemaining}</td>
+                            <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
+                            <td>
+                                <div class="action-buttons">
+                                    <a href="${arrowLink}" target="${arrowTarget}" class="action-arrow ${arrowClass}" ${arrowClick}>&#x1F501;</a>
+                                    <button class="hide-button" onclick="togglePropertyHidden(${prop.id})" title="${hideButtonTitle}">${hideButtonText}</button>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                tableHTML += `
+                        </tbody>
+                    </table>
+                `;
+
+                propertiesSection.innerHTML = tableHTML;
+
+            } catch (error) {
+                console.error('Error rendering properties:', error);
+                propertiesSection.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        function getLeaseStatus(property) {
+            // Check if lease extension already offered
+            if (property.lease_extension !== null && property.lease_extension !== undefined) {
+                return 'offered';
+            }
+
+            const daysRemaining = property.rental_period_remaining || 0;
+
+            if (daysRemaining < 5) {
+                return 'urgent';
+            } else if (daysRemaining <= 10) {
+                return 'extend';
+            } else {
+                return 'ok';
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wait a bit for auth to initialize, then load properties
+            setTimeout(() => {
+                if (getApiKey()) {
+                    loadProperties();
+                } else {
+                    document.getElementById('propertiesSection').innerHTML = 
+                        '<div class="error">Please log in with your API key to view your properties.</div>';
+                }
+            }, 100);
+        });
+    </script>
+</body>
+</html>
