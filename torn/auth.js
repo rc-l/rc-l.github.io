@@ -175,5 +175,46 @@ function headerLogout() {
     }
 }
 
+/**
+ * Render page header with navigation and authentication
+ * @param {Object} options - Configuration options
+ * @param {boolean} options.showBackButton - Whether to show back button (default: false)
+ * @param {string} options.maxWidth - Maximum width of header (default: '800px')
+ */
+function renderHeader(options = {}) {
+    const { showBackButton = false, maxWidth = '800px' } = options;
+    
+    // Create header container
+    const headerDiv = document.createElement('div');
+    headerDiv.style.display = 'flex';
+    headerDiv.style.justifyContent = showBackButton ? 'space-between' : 'flex-end';
+    headerDiv.style.alignItems = 'center';
+    headerDiv.style.maxWidth = maxWidth;
+    headerDiv.style.margin = '0 auto';
+    headerDiv.style.padding = '10px 20px';
+    
+    // Add back button if needed
+    if (showBackButton) {
+        const backLink = document.createElement('a');
+        backLink.href = 'index.html';
+        backLink.className = 'back-button';
+        backLink.style.margin = '0';
+        backLink.textContent = '← Back to Tools';
+        headerDiv.appendChild(backLink);
+    }
+    
+    // Add auth container
+    const authContainer = document.createElement('div');
+    authContainer.id = 'authContainer';
+    authContainer.className = 'header-auth';
+    headerDiv.appendChild(authContainer);
+    
+    // Insert header at the beginning of body
+    document.body.insertBefore(headerDiv, document.body.firstChild);
+    
+    // Initialize auth
+    initAuthHeader();
+}
+
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', initAuthHeader);
