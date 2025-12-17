@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Torn Lease Extension Autofill
 // @namespace    brandhout.leaseextension
-// @version      1.0.0
+// @version      1.1.1
 // @description  Automatically fills lease extension fields.
 // @author       Brandhout
 // @match        https://www.torn.com/properties.php*
@@ -13,7 +13,9 @@
     'use strict';
     
     // Configuration constants
-    const RATE_PER_DAY = 720000;  // $720k per day
+    const RATE_PER_DAY = 750000;   // Base rate $750k per day
+    const DISCOUNT = 0.03;         // 3% discount
+    const ROUNDING = 100000;       // Round to nearest $100k
     const TARGET_DAYS = 100;       // Target total lease length
     const RETRY_INTERVAL = 500;    // ms between retries
     const MAX_RETRIES = 10;        // Maximum retry attempts
@@ -110,10 +112,13 @@
             }
             
             // Calculate cost
-            const cost = additionalDays * RATE_PER_DAY;
+            // Apply discount to total and round to nearest 100k
+            const rawCost = additionalDays * RATE_PER_DAY * (1 - DISCOUNT);
+            const cost = Math.round(rawCost / ROUNDING) * ROUNDING;
             
             console.log(`Additional days: ${additionalDays}`);
-            console.log(`Cost: $${cost.toLocaleString()}`);
+            console.log(`Base Rate: ${RATE_PER_DAY}, Raw Cost: ${rawCost}`);
+            console.log(`Final Cost (Rounded): $${cost.toLocaleString()}`);
             
             // Fill the form fields
             const daysInput = document.querySelector('input[data-name="days"]');
