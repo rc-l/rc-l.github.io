@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Torn Lease Extension Autofill
 // @namespace    brandhout.leaseextension
-// @version      1.1.1
-// @description  Automatically fills lease extension fields.
+// @version      1.2.0
+// @description  Automatically fills lease extension and new lease fields.
 // @author       Brandhout
 // @match        https://www.torn.com/properties.php*
 // @grant        none
@@ -47,16 +47,17 @@
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
             retryCount = 0;
-            checkAndFill();
+            const hash = window.location.hash;
+            
+            if (hash.includes('tab=offerExtension')) {
+                checkAndFillExtension();
+            } else if (hash.includes('tab=lease')) {
+                checkAndFillLease();
+            }
         }, 100);
     }
     
-    function checkAndFill() {
-        // Check if we're on the extension tab
-        if (!isOnExtensionTab()) {
-            return;
-        }
-        
+    function checkAndFillExtension() {
         // Check if form is visible and ready
         const container = document.querySelector('.offerExtension-opt');
         if (!container || container.style.display === 'none') {
@@ -64,7 +65,7 @@
             if (retryCount < MAX_RETRIES) {
                 retryCount++;
                 console.log(`Lease extension form not ready, retry ${retryCount}/${MAX_RETRIES}`);
-                setTimeout(checkAndFill, RETRY_INTERVAL);
+                setTimeout(checkAndFillExtension, RETRY_INTERVAL);
             }
             return;
         }
@@ -83,7 +84,76 @@
             // Retry if filling failed and we haven't exceeded max retries
             retryCount++;
             console.log(`Failed to fill form, retry ${retryCount}/${MAX_RETRIES}`);
-            setTimeout(checkAndFill, RETRY_INTERVAL);
+            setTimeout(checkAndFillExtension, RETRY_INTERVAL);
+        }
+    }
+
+    function checkAndFillLease() {
+        // 1. Switch to "Add property to rental market" tab if needed
+        const marketTabLink = document.querySelector('a#market1');
+        const marketTabLi = document.querySelector('li#leasemarket');
+        
+        if (marketTabLink && marketTabLi && !marketTabLi.classList.contains('ui-tabs-active')) {
+            console.log('Switching to Rental Market tab');
+            marketTabLink.click();
+            // Wait for tab switch animation/DOM update
+            setTimeout(checkAndFillLease, 200);
+            return;
+        }
+
+        // 2. Check if form is visible
+        const container = document.querySelector('#market');
+        if (!container || container.style.display === 'none') {
+             if (retryCount < MAX_RETRIES) {
+                retryCount++;
+                console.log(`Lease market form not ready, retry ${retryCount}/${MAX_RETRIES}`);
+                setTimeout(checkAndFillLease, RETRY_INTERVAL);
+            }
+            return;
+        }
+
+        // Avoid filling the same form multiple times
+        const currentHash = window.location.hash;
+        if (lastFilledHash === currentHash) {
+            return;
+        }
+
+        // 3. Fill Form
+        if (fillLeaseForm()) {
+            lastFilledHash = currentHash;
+            console.log('Lease market form auto-filled successfully');
+        } else if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            console.log(`Failed to fill lease form, retry ${retryCount}/${MAX_RETRIES}`);
+            setTimeout(checkAndFillLease, RETRY_INTERVAL);
+        }
+    }
+    
+    function fillLeaseForm() {
+        try {
+            // Find inputs in the #market container
+            const container = document.querySelector('#market');
+            if (!container) return false;
+
+            const daysInput = container.querySelector('input[data-name="days"]');
+            const costInput = container.querySelector('input[data-name="money"]'); // Note: data-name is "money" here, not "offercost"
+
+            if (!daysInput || !costInput) {
+                console.log('Could not find lease form input fields');
+                return false;
+            }
+
+            const totalCost = TARGET_DAYS * RATE_PER_DAY;
+            console.log(`Setting Lease Days: ${TARGET_DAYS}`);
+            console.log(`Setting Lease Cost: ${totalCost}`);
+
+            setInputValue(daysInput, TARGET_DAYS);
+            setInputValue(costInput, totalCost);
+
+            return true;
+        } catch (error) {
+            console.error('Error filling lease form:', error);
+            return false;
         }
     }
     

@@ -43,7 +43,14 @@ A userscript that automatically fills the 'cost of extension' and 'additional da
 - Triggers necessary events for proper form validation
 - Preserves existing form behavior and submission logic
 
-### 6. Error Handling
+### 6. New Lease Market Autofill
+- **Activation**: Runs when on the "Lease" page (`tab=lease`)
+- **Tab Switching**: Automatically switches to "Add property to rental market" tab
+- **Auto-fill**:
+  - **Days**: 100 days
+  - **Cost**: Calculated as `100 days × $750,000 = $75,000,000`
+
+### 7. Error Handling
 - Graceful handling when:
   - Page structure changes
   - Days remaining can't be parsed
@@ -51,7 +58,7 @@ A userscript that automatically fills the 'cost of extension' and 'additional da
   - Already at or above 100 days
 - Console logging for debugging purposes
 
-### 7. Versioning
+### 8. Versioning
 - Semantic versioning is used
   - **Major** version change will always be indicated by the user.
   - **Minor** change is for new features.
