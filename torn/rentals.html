@@ -21,7 +21,8 @@
     6. Vacant properties should appear at the top of the list
     7. Rented properties sorted by urgency (fewest days remaining first)
     8. Action buttons:
-       * Repeat emoji (🔁) - Links to lease extension page when status is EXTEND and extension not yet offered
+       * Repeat emoji (🔁) - Links to lease extension page when status is EXTEND or URGENT and extension not yet offered
+       * Plus emoji (➕) - Links to lease market page when status is VACANT
        * Crossmark (❌) - Hide property from list (persistent across sessions)
        * Eye (👁️) - Unhide property
     9. Show/Hide hidden properties toggle button
@@ -594,13 +595,16 @@
                     // For rented/none properties, enable only when extension is needed
                     const canExtend = isVacant || 
                                      ((prop.status === 'rented' || (prop.status === 'none' && prop.rental_period_remaining > 0)) && 
-                                      status === 'extend' && !prop.lease_extension);
+                                      (status === 'extend' || status === 'urgent') && !prop.lease_extension);
                     const arrowClass = canExtend ? 'active' : 'disabled';
                     
                     // Different URL for vacant properties (rent out) vs rented properties (extend)
                     let arrowLink = '#';
+                    let actionIcon = '&#x1F501;'; // Repeat emoji
+
                     if (isVacant) {
-                        arrowLink = `https://www.torn.com/properties.php#/p=options&ID=${prop.id}`;
+                        arrowLink = `https://www.torn.com/properties.php#/p=options&ID=${prop.id}&tab=lease`;
+                        actionIcon = '&#x2795;'; // Plus emoji
                     } else if (canExtend) {
                         arrowLink = `https://www.torn.com/properties.php#/p=options&ID=${prop.id}&tab=offerExtension`;
                     }
@@ -626,7 +630,7 @@
                             <td><span class="status-badge ${statusClass}">${statusLabel}</span></td>
                             <td>
                                 <div class="action-buttons">
-                                    <a href="${arrowLink}" target="${arrowTarget}" class="action-arrow ${arrowClass}" ${arrowClick}>&#x1F501;</a>
+                                    <a href="${arrowLink}" target="${arrowTarget}" class="action-arrow ${arrowClass}" ${arrowClick}>${actionIcon}</a>
                                     <button class="hide-button" onclick="togglePropertyHidden(${prop.id})" title="${hideButtonTitle}">${hideButtonText}</button>
                                 </div>
                             </td>
