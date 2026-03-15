@@ -1,0 +1,501 @@
+<!--
+War Dashboard
+
+Description:
+This dashboard to get an overview of current and past wars for the whole faction.
+
+Requirements:
+1. A user can see last 10 wars their faction has fought in
+2. A user can the number of hits for all members of past wars based on the war report
+3. A user can see the number of hits for all members in the current war based on the attack log.
+
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>War Dashboard - Torn Tools</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="auth.js"></script>
+    <script src="torn-api.js"></script>
+    <style>
+        .wars-list {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .war-tile-wrapper {
+            border: 1px solid #ccc;
+            border-radius: 10px;
+            background-color: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        .war-tile {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 18px 24px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .war-tile:hover {
+            background-color: #f9f9f9;
+        }
+
+        .war-tile-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .war-tile-chevron {
+            font-size: 12px;
+            color: #999;
+            transition: transform 0.2s;
+            display: inline-block;
+        }
+
+        .war-tile-chevron.open {
+            transform: rotate(90deg);
+        }
+
+        .war-tile-faction {
+            font-size: 16px;
+            color: #000000;
+            font-weight: 500;
+        }
+
+        .war-tile-status {
+            font-size: 15px;
+            font-weight: bold;
+        }
+
+        .status-won     { color: #4CAF50; }
+        .status-lost    { color: #f44336; }
+        .status-ongoing { color: #FF9800; }
+        .status-future  { color: #9E9E9E; }
+
+        .war-details {
+            display: none;
+            border-top: 1px solid #eee;
+            padding: 16px 24px;
+        }
+
+        .war-details.open {
+            display: block;
+        }
+
+        .war-report-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        .war-report-table th {
+            background-color: #2196F3;
+            color: white;
+            font-weight: bold;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        .war-report-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .war-report-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .war-report-table tr:hover td {
+            background-color: #f5f5f5;
+        }
+
+        .war-report-loading {
+            color: #666;
+            font-style: italic;
+            padding: 10px 0;
+        }
+
+        .war-report-error {
+            color: #c62828;
+            padding: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <script>renderHeader({ showBackButton: true, maxWidth: '800px' });</script>
+    <div class="container">
+        <h1>War Dashboard</h1>
+        <p class="subtitle">Overview of your faction's ranked wars</p>
+
+        <!-- Loading State -->
+        <div id="loadingState" style="display: none; padding: 20px; text-align: center;">
+            <p>Loading war data...</p>
+        </div>
+
+        <!-- Error State -->
+        <div id="errorState" style="display: none; padding: 20px; background-color: #ffebee; border-radius: 4px;">
+            <strong style="color: #c62828;">Error:</strong>
+            <p id="errorMessage" style="color: #c62828; margin-top: 10px;"></p>
+        </div>
+
+        <!-- Wars Content -->
+        <div id="warsContent" style="display: none;">
+            <h2>Last 10 Ranked Wars</h2>
+            <div id="warsList" class="wars-list"></div>
+        </div>
+    </div>
+
+    <script>
+        let _apiKey = null;
+        let _factionId = null;
+        const _reportCache = {};
+
+        // Cache for ongoing war attack aggregation
+        // { warId, lastAttackTimestamp, memberHits: { memberId: { name, id, hits } } }
+        let _ongoingWarCache = null;
+
+        async function initializePage() {
+            const apiKey = getApiKey();
+
+            if (!apiKey || apiKey.trim() === '') {
+                document.querySelector('.container').innerHTML += `
+                    <div class="info">
+                        <p><strong>Please log in to view war data</strong></p>
+                        <p>Enter your Torn API key in the login field above.</p>
+                        <p><strong>How to get your API key:</strong></p>
+                        <p>1. Go to <a href="https://www.torn.com/preferences.php#tab=api" target="_blank">Torn Preferences - API</a></p>
+                        <p>2. Create or select an API key with <strong>"Limited Access"</strong> level</p>
+                        <p>3. Enter it in the login field at the top-right of this page</p>
+                    </div>
+                `;
+                return;
+            }
+
+            _apiKey = apiKey;
+            await loadWarsData(apiKey);
+        }
+
+        async function loadWarsData(apiKey) {
+            const loadingState = document.getElementById('loadingState');
+            const errorState = document.getElementById('errorState');
+            const warsContent = document.getElementById('warsContent');
+
+            try {
+                loadingState.style.display = 'block';
+                errorState.style.display = 'none';
+                warsContent.style.display = 'none';
+
+                const [factionBasic, rankedWarsData, timestampData] = await Promise.all([
+                    fetchFactionBasic(apiKey),
+                    fetchFactionRankedWars(apiKey),
+                    fetchTimestamp(apiKey)
+                ]);
+
+                _factionId = factionBasic.basic?.id;
+                const currentTime = timestampData.timestamp;
+                const wars = rankedWarsData.rankedwars || [];
+
+                renderWars(wars, _factionId, currentTime);
+
+                loadingState.style.display = 'none';
+                warsContent.style.display = 'block';
+
+            } catch (error) {
+                console.error('Error loading wars data:', error);
+                loadingState.style.display = 'none';
+                errorState.style.display = 'block';
+                document.getElementById('errorMessage').textContent = error.message;
+            }
+        }
+
+        function getWarStatus(war, factionId, currentTime) {
+            if (war.start > currentTime) {
+                return { label: 'Future', cssClass: 'status-future' };
+            }
+            if (war.end === 0 || war.end === null) {
+                return { label: 'Ongoing', cssClass: 'status-ongoing' };
+            }
+            if (war.winner === factionId) {
+                return { label: 'Won', cssClass: 'status-won' };
+            }
+            return { label: 'Lost', cssClass: 'status-lost' };
+        }
+
+        function getOpponentName(war, factionId) {
+            if (!Array.isArray(war.factions)) return 'Unknown';
+            const opponent = war.factions.find(f => f.id !== factionId);
+            return opponent ? opponent.name : 'Unknown';
+        }
+
+        function renderWars(wars, factionId, currentTime) {
+            const warsList = document.getElementById('warsList');
+            warsList.innerHTML = '';
+
+            const sorted = [...wars].sort((a, b) => b.start - a.start).slice(0, 10);
+
+            if (sorted.length === 0) {
+                warsList.innerHTML = '<p style="color: #666;">No ranked wars found.</p>';
+                return;
+            }
+
+            for (const war of sorted) {
+                const opponentName = getOpponentName(war, factionId);
+                const status = getWarStatus(war, factionId, currentTime);
+                const isDone = war.end !== 0 && war.end !== null && war.start <= currentTime;
+                const isOngoing = !isDone && war.start <= currentTime;
+                const enemyFactionId = getEnemyFactionId(war, factionId);
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'war-tile-wrapper';
+
+                const tile = document.createElement('div');
+                tile.className = 'war-tile';
+                tile.dataset.warId = war.id;
+                tile.dataset.warStart = war.start;
+                tile.dataset.isDone = isDone ? '1' : '0';
+                tile.dataset.isOngoing = isOngoing ? '1' : '0';
+                tile.dataset.enemyFactionId = enemyFactionId || '';
+                tile.addEventListener('click', onTileClick);
+                tile.innerHTML = `
+                    <span class="war-tile-left">
+                        <span class="war-tile-chevron">&#9658;</span>
+                        <span class="war-tile-faction">${escapeHtml(opponentName)}</span>
+                    </span>
+                    <span class="war-tile-status ${status.cssClass}">${status.label}</span>
+                `;
+
+                const details = document.createElement('div');
+                details.className = 'war-details';
+                details.id = `war-details-${war.id}`;
+
+                wrapper.appendChild(tile);
+                wrapper.appendChild(details);
+                warsList.appendChild(wrapper);
+            }
+        }
+
+        function getEnemyFactionId(war, factionId) {
+            if (!Array.isArray(war.factions)) return null;
+            const enemy = war.factions.find(f => f.id !== factionId);
+            return enemy ? enemy.id : null;
+        }
+
+        async function onTileClick(event) {
+            const tile = event.currentTarget;
+            const warId = tile.dataset.warId;
+            const isDone = tile.dataset.isDone === '1';
+            const isOngoing = tile.dataset.isOngoing === '1';
+            const details = document.getElementById(`war-details-${warId}`);
+            const chevron = tile.querySelector('.war-tile-chevron');
+
+            const isOpen = details.classList.contains('open');
+            if (isOpen) {
+                details.classList.remove('open');
+                chevron.classList.remove('open');
+                return;
+            }
+
+            details.classList.add('open');
+            chevron.classList.add('open');
+
+            if (isDone) {
+                if (details.dataset.loaded === '1') return;
+                await loadFinishedWarReport(warId, details);
+            } else if (isOngoing) {
+                await loadOngoingWarReport(tile, details);
+            } else {
+                // Future war
+                details.innerHTML = '<p style="color: #999; font-style: italic;">War has not started yet.</p>';
+                details.dataset.loaded = '1';
+            }
+        }
+
+        async function loadFinishedWarReport(warId, details) {
+            details.innerHTML = '<p class="war-report-loading">Loading war report...</p>';
+            try {
+                let reportData = _reportCache[warId];
+                if (!reportData) {
+                    reportData = await fetchRankedWarReport(_apiKey, warId);
+                    _reportCache[warId] = reportData;
+                }
+                const report = reportData.rankedwarreport;
+                const factionData = report.factions.find(f => f.id === _factionId);
+                if (!factionData) {
+                    details.innerHTML = '<p class="war-report-error">Could not find your faction in this war report.</p>';
+                    details.dataset.loaded = '1';
+                    return;
+                }
+                const members = [...factionData.members].sort((a, b) => b.attacks - a.attacks);
+                details.innerHTML = buildFinishedReportHTML(members);
+                details.dataset.loaded = '1';
+            } catch (error) {
+                console.error('Error loading war report:', error);
+                details.innerHTML = `<p class="war-report-error">Failed to load war report: ${escapeHtml(error.message)}</p>`;
+            }
+        }
+
+        function buildFinishedReportHTML(members) {
+            let html = `
+                <table class="war-report-table">
+                    <thead><tr><th>Member</th><th>Attacks</th><th>Score</th></tr></thead>
+                    <tbody>`;
+            for (const m of members) {
+                html += `<tr>
+                    <td><a href="https://www.torn.com/profiles.php?XID=${m.id}" target="_blank">${escapeHtml(m.name)} [${m.id}]</a></td>
+                    <td>${m.attacks}</td>
+                    <td>${m.score.toFixed(2)}</td>
+                </tr>`;
+            }
+            html += `</tbody></table>`;
+            return html;
+        }
+
+        async function loadOngoingWarReport(tile, details) {
+            const warId = tile.dataset.warId;
+            const warStart = parseInt(tile.dataset.warStart, 10);
+            const enemyFactionId = parseInt(tile.dataset.enemyFactionId, 10);
+
+            details.innerHTML = '<p class="war-report-loading">Loading attack data...</p>';
+
+            try {
+                // If cache is for a different war, clear it
+                if (_ongoingWarCache && _ongoingWarCache.warId !== warId) {
+                    _ongoingWarCache = null;
+                }
+
+                const VALID_RESULTS = new Set(['Attacked', 'Hospitalized', 'Bounty']);
+
+                let memberHits;   // { memberId: { name, id, hits, score } }
+                let fromTimestamp;
+
+                if (_ongoingWarCache && _ongoingWarCache.warId === warId) {
+                    // Incremental fetch: only attacks newer than last cached
+                    memberHits = _ongoingWarCache.memberHits;
+                    fromTimestamp = _ongoingWarCache.lastAttackTimestamp + 1;
+                } else {
+                    // Fresh load: seed member list from /faction/members (all start at 0 hits)
+                    const membersData = await fetchFactionMembers(_apiKey);
+                    const membersArray = Array.isArray(membersData.members)
+                        ? membersData.members
+                        : Object.values(membersData.members || {});
+                    memberHits = {};
+                    for (const m of membersArray) {
+                        memberHits[m.id] = { id: m.id, name: m.name, hits: 0, score: 0 };
+                    }
+                    fromTimestamp = warStart;
+                }
+
+                const [attacks] = await Promise.all([
+                    fetchFactionAttacksFull(_apiKey, fromTimestamp)
+                ]);
+
+                let latestTimestamp = _ongoingWarCache ? _ongoingWarCache.lastAttackTimestamp : 0;
+
+                for (const attack of attacks) {
+                    if (attack.ended > latestTimestamp) latestTimestamp = attack.ended;
+                    if (attack.defender?.faction_id !== enemyFactionId) continue;
+                    if (!VALID_RESULTS.has(attack.result)) continue;
+
+                    const attackerId = attack.attacker?.id;
+                    if (!attackerId) continue;
+
+                    if (!memberHits[attackerId]) {
+                        // Attacker is not a current member (e.g. left faction) — still track them
+                        memberHits[attackerId] = { id: attackerId, name: null, hits: 0, score: 0 };
+                    }
+                    memberHits[attackerId].hits++;
+                    memberHits[attackerId].score += attack.respect_gain || 0;
+                }
+
+                // Resolve names for any ex-members whose name is not yet known, in parallel
+                const unknown = Object.values(memberHits).filter(m => m.name === null);
+                if (unknown.length > 0) {
+                    await Promise.all(unknown.map(async (m) => {
+                        try {
+                            const data = await fetchUserBasicById(_apiKey, m.id);
+                            m.name = data.profile?.name || data.name || `Player ${m.id}`;
+                        } catch {
+                            m.name = `Player ${m.id}`;
+                        }
+                    }));
+                }
+
+                _ongoingWarCache = { warId, lastAttackTimestamp: latestTimestamp, memberHits };
+
+                const sorted = Object.values(memberHits).sort((a, b) => b.hits - a.hits || a.name.localeCompare(b.name));
+                details.innerHTML = buildOngoingReportHTML(sorted, warId, tile);
+                details.dataset.loaded = '1';
+
+            } catch (error) {
+                console.error('Error loading ongoing war attacks:', error);
+                details.innerHTML = `<p class="war-report-error">Failed to load attack data: ${escapeHtml(error.message)}</p>`;
+            }
+        }
+
+        function buildOngoingReportHTML(members, warId, tile) {
+            let html = `
+                <div style="display:flex; justify-content:flex-end; gap:4px; margin-bottom:6px;">
+                    <button
+                        title="Clear cache"
+                        style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px 4px;line-height:1;"
+                        onclick="onClearOngoingWarCache(event, '${warId}')">&#10060;</button>
+                    <button
+                        title="Update table"
+                        style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px 4px;line-height:1;"
+                        onclick="onUpdateOngoingWar(event, '${warId}')">&#x1F504;</button>
+                </div>
+                <table class="war-report-table">
+                    <thead><tr><th>Member</th><th>Hits</th><th>Score</th></tr></thead>
+                    <tbody>`;
+            if (members.length === 0) {
+                html += `<tr><td colspan="3" style="color:#999;font-style:italic;">No valid hits recorded yet.</td></tr>`;
+            } else {
+                for (const m of members) {
+                    html += `<tr>
+                        <td><a href="https://www.torn.com/profiles.php?XID=${m.id}" target="_blank">${escapeHtml(m.name)} [${m.id}]</a></td>
+                        <td>${m.hits}</td>
+                        <td>${m.score.toFixed(2)}</td>
+                    </tr>`;
+                }
+            }
+            html += `</tbody></table>`;
+            return html;
+        }
+
+        async function onUpdateOngoingWar(event, warId) {
+            event.stopPropagation();
+            const tile = document.querySelector(`.war-tile[data-war-id='${warId}']`);
+            const details = document.getElementById(`war-details-${warId}`);
+            // Force reload — clear the loaded flag so loadOngoingWarReport runs again
+            details.dataset.loaded = '0';
+            await loadOngoingWarReport(tile, details);
+        }
+
+        async function onClearOngoingWarCache(event, warId) {
+            event.stopPropagation();
+            _ongoingWarCache = null;
+            const tile = document.querySelector(`.war-tile[data-war-id='${warId}']`);
+            const details = document.getElementById(`war-details-${warId}`);
+            details.dataset.loaded = '0';
+            await loadOngoingWarReport(tile, details);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        initializePage();
+    </script>
+</body>
+</html>

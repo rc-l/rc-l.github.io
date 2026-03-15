@@ -81,6 +81,26 @@ async function fetchUserBasic(apiKey) {
 }
 
 /**
+ * Fetch basic information for a specific user by ID
+ * @param {string} apiKey - The Torn API key
+ * @param {number} userId - The user ID to look up
+ * @returns {Promise<Object>} User basic data
+ */
+async function fetchUserBasicById(apiKey, userId) {
+    const response = await fetch(`${API_BASE_URL}/user/${userId}/basic`, {
+        headers: {
+            'Authorization': `ApiKey ${apiKey}`
+        }
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`User Basic (${userId}) Error Response:`, errorText);
+        throw new Error(`Failed to fetch user data for ${userId}: ${response.status} ${response.statusText}`);
+    }
+    return await response.json();
+}
+
+/**
  * Fetch user's faction information
  * @param {string} apiKey - The Torn API key
  * @returns {Promise<Object>} User faction data including faction_name and faction_id
@@ -182,6 +202,119 @@ async function fetchUserLogs(apiKey, options = {}) {
     }
 
     return await response.json();
+}
+
+/**
+ * Fetch faction basic information (id, name, etc.)
+ * @param {string} apiKey - The Torn API key
+ * @returns {Promise<Object>} Faction basic data
+ */
+async function fetchFactionBasic(apiKey) {
+    const response = await fetch(`${API_BASE_URL}/faction/basic`, {
+        headers: {
+            'Authorization': `ApiKey ${apiKey}`
+        }
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Faction Basic Error Response:', errorText);
+        throw new Error(`Failed to fetch faction basic data: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+    console.log('Faction Basic Data:', data);
+    return data;
+}
+
+/**
+ * Fetch faction ranked wars history
+ * @param {string} apiKey - The Torn API key
+ * @returns {Promise<Object>} Ranked wars data
+ */
+async function fetchFactionRankedWars(apiKey) {
+    const response = await fetch(`${API_BASE_URL}/faction/rankedwars`, {
+        headers: {
+            'Authorization': `ApiKey ${apiKey}`
+        }
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Faction Ranked Wars Error Response:', errorText);
+        throw new Error(`Failed to fetch ranked wars data: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+    console.log('Faction Ranked Wars Data:', data);
+    return data;
+}
+
+/**
+ * Fetch current faction members
+ * @param {string} apiKey - The Torn API key
+ * @returns {Promise<Object>} Faction members data
+ */
+async function fetchFactionMembers(apiKey) {
+    const response = await fetch(`${API_BASE_URL}/faction/members`, {
+        headers: {
+            'Authorization': `ApiKey ${apiKey}`
+        }
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch faction members: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+    const data = await response.json();
+    console.log('Faction Members Data:', data);
+    return data;
+}
+
+/**
+ * Fetch the war report for a specific ranked war
+ * @param {string} apiKey - The Torn API key
+ * @param {number} rankedWarId - The ranked war ID
+ * @returns {Promise<Object>} Ranked war report data
+ */
+async function fetchRankedWarReport(apiKey, rankedWarId) {
+    const response = await fetch(`${API_BASE_URL}/faction/${rankedWarId}/rankedwarreport`, {
+        headers: {
+            'Authorization': `ApiKey ${apiKey}`
+        }
+    });
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Ranked War Report Error Response:', errorText);
+        throw new Error(`Failed to fetch war report: ${response.status} ${response.statusText}`);
+    }
+    const data = await response.json();
+    console.log(`Ranked War Report (${rankedWarId}):`, data);
+    return data;
+}
+
+/**
+ * Fetch all outgoing faction attacks with pagination
+ * @param {string} apiKey - The Torn API key
+ * @param {number} from - Only return attacks after this timestamp
+ * @returns {Promise<Object[]>} Array of all attack objects
+ */
+async function fetchFactionAttacksFull(apiKey, from) {
+    const allAttacks = [];
+    let url = `${API_BASE_URL}/faction/attacksfull?filters=outgoing&sort=asc&limit=1000&from=${from}`;
+
+    while (url) {
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `ApiKey ${apiKey}`
+            }
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to fetch faction attacks: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+        const data = await response.json();
+        const page = Array.isArray(data.attacks) ? data.attacks : Object.values(data.attacks || {});
+        allAttacks.push(...page);
+        url = data._metadata?.links?.next || null;
+    }
+
+    return allAttacks;
 }
 
 /**
