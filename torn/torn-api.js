@@ -309,6 +309,13 @@ async function fetchFactionAttacksFull(apiKey, from) {
             throw new Error(`Failed to fetch faction attacks: ${response.status} ${response.statusText} - ${errorText}`);
         }
         const data = await response.json();
+        if (data.error) {
+            const err = new Error(`API error ${data.error.code}: ${data.error.error}`);
+            if (data.error.code === 16) {
+                err.isPermissionError = true;
+            }
+            throw err;
+        }
         const page = Array.isArray(data.attacks) ? data.attacks : Object.values(data.attacks || {});
         allAttacks.push(...page);
         url = data._metadata?.links?.next || null;

@@ -157,8 +157,11 @@ async function headerLogin() {
             showLoggedInState('User');
         }
         
-        // Reload page if on warhits to trigger validation and data load
-        if (window.location.pathname.includes('warhits.html')) {
+        // Reload pages that need to re-initialize content after login.
+        if (
+            window.location.pathname.includes('warhits.html') ||
+            window.location.pathname.includes('wardashboard.html')
+        ) {
             window.location.reload();
         }
     } else {

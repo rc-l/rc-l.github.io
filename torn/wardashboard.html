@@ -437,7 +437,10 @@ Requirements:
 
             } catch (error) {
                 console.error('Error loading ongoing war attacks:', error);
-                details.innerHTML = `<p class="war-report-error">Failed to load attack data: ${escapeHtml(error.message)}</p>`;
+                const msg = error.isPermissionError
+                    ? 'Error: Requires limited access key with faction API access permissions. The provided key has insufficient permissions.'
+                    : `Failed to load attack data: ${escapeHtml(error.message)}`;
+                details.innerHTML = `<p class="war-report-error">${msg}</p>`;
             }
         }
 
