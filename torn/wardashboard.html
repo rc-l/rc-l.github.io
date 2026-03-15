@@ -128,6 +128,56 @@ Requirements:
             color: #c62828;
             padding: 10px 0;
         }
+
+        .war-payout-fields {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+            align-items: end;
+        }
+
+        .war-payout-field {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .war-payout-field label {
+            margin-bottom: 0;
+            font-size: 13px;
+        }
+
+        .war-payout-input-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .war-payout-field input,
+        .war-payout-value {
+            width: 100%;
+            min-height: 40px;
+            padding: 10px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            background-color: #fff;
+            font-size: 14px;
+        }
+
+        .war-payout-value {
+            display: flex;
+            align-items: center;
+            color: #333;
+            background-color: #f9f9f9;
+        }
+
+        .war-payout-suffix {
+            color: #666;
+            font-weight: bold;
+            min-width: 14px;
+        }
     </style>
 </head>
 <body>
@@ -158,6 +208,7 @@ Requirements:
         let _apiKey = null;
         let _factionId = null;
         const _reportCache = {};
+        const FINISHED_WAR_INPUTS_STORAGE_KEY = 'wardashboard_finished_war_inputs';
 
         // Cache for ongoing war attack aggregation
         // { warId, lastAttackTimestamp, memberHits: { memberId: { name, id, hits } } }
@@ -309,7 +360,7 @@ Requirements:
 
             if (isDone) {
                 if (details.dataset.loaded === '1') return;
-                await loadFinishedWarReport(warId, details);
+                await loadFinishedWarReport(warId, details, tile);
             } else if (isOngoing) {
                 await loadOngoingWarReport(tile, details);
             } else {
@@ -319,7 +370,7 @@ Requirements:
             }
         }
 
-        async function loadFinishedWarReport(warId, details) {
+        async function loadFinishedWarReport(warId, details, tile) {
             details.innerHTML = '<p class="war-report-loading">Loading war report...</p>';
             try {
                 let reportData = _reportCache[warId];
@@ -335,7 +386,8 @@ Requirements:
                     return;
                 }
                 const members = [...factionData.members].sort((a, b) => b.attacks - a.attacks);
-                details.innerHTML = buildFinishedReportHTML(members);
+                details.innerHTML = buildFinishedReportHTML(warId, members);
+                updateFinishedWarPayouts(warId);
                 details.dataset.loaded = '1';
             } catch (error) {
                 console.error('Error loading war report:', error);
@@ -343,8 +395,57 @@ Requirements:
             }
         }
 
-        function buildFinishedReportHTML(members) {
+        function buildFinishedReportHTML(warId, members) {
+            const cachedInputs = getFinishedWarInputs(warId);
             let html = `
+                <div class="war-payout-fields">
+                    <div class="war-payout-field">
+                        <label for="finished-target-${warId}">Target</label>
+                        <input
+                            id="finished-target-${warId}"
+                            type="number"
+                            inputmode="numeric"
+                            step="1"
+                            value="${escapeHtml(cachedInputs.target)}"
+                            oninput="saveFinishedWarInputField('${warId}', 'target', this.value)"
+                        >
+                    </div>
+                    <div class="war-payout-field">
+                        <label for="finished-earnings-${warId}">Total Earnings</label>
+                        <input
+                            id="finished-earnings-${warId}"
+                            type="text"
+                            inputmode="numeric"
+                            value="${escapeHtml(formatWholeDollarValue(cachedInputs.totalEarnings))}"
+                            onfocus="onFinishedWarEarningsFocus('${warId}')"
+                            oninput="onFinishedWarEarningsInput('${warId}')"
+                            onblur="onFinishedWarEarningsBlur('${warId}')"
+                        >
+                    </div>
+                    <div class="war-payout-field">
+                        <label for="finished-cut-percent-${warId}">Faction cut</label>
+                        <div class="war-payout-input-wrap">
+                            <input
+                                id="finished-cut-percent-${warId}"
+                                type="number"
+                                inputmode="numeric"
+                                step="1"
+                                min="0"
+                                value="${escapeHtml(cachedInputs.cutPercent)}"
+                                oninput="onFinishedWarCutPercentInput('${warId}')"
+                            >
+                            <span class="war-payout-suffix">%</span>
+                        </div>
+                    </div>
+                    <div class="war-payout-field">
+                        <label>Faction cut value</label>
+                        <div id="finished-cut-value-${warId}" class="war-payout-value">0</div>
+                    </div>
+                    <div class="war-payout-field">
+                        <label>Total Pay</label>
+                        <div id="finished-total-pay-${warId}" class="war-payout-value">0</div>
+                    </div>
+                </div>
                 <table class="war-report-table">
                     <thead><tr><th>Member</th><th>Attacks</th><th>Score</th></tr></thead>
                     <tbody>`;
@@ -357,6 +458,99 @@ Requirements:
             }
             html += `</tbody></table>`;
             return html;
+        }
+
+        function getFinishedWarInputsStore() {
+            try {
+                return JSON.parse(localStorage.getItem(FINISHED_WAR_INPUTS_STORAGE_KEY) || '{}');
+            } catch (error) {
+                console.error('Failed to read finished war input cache:', error);
+                return {};
+            }
+        }
+
+        function saveFinishedWarInputsStore(store) {
+            try {
+                localStorage.setItem(FINISHED_WAR_INPUTS_STORAGE_KEY, JSON.stringify(store));
+            } catch (error) {
+                console.error('Failed to save finished war input cache:', error);
+            }
+        }
+
+        function getFinishedWarInputs(warId) {
+            const store = getFinishedWarInputsStore();
+            const values = store[warId] || {};
+            return {
+                target: values.target || '',
+                totalEarnings: values.totalEarnings || '',
+                cutPercent: values.cutPercent || ''
+            };
+        }
+
+        function saveFinishedWarInputField(warId, field, value) {
+            const store = getFinishedWarInputsStore();
+            const warInputs = store[warId] || {};
+            warInputs[field] = value;
+            store[warId] = warInputs;
+            saveFinishedWarInputsStore(store);
+        }
+
+        function sanitizeIntegerInput(value) {
+            return String(value || '').replace(/[^0-9]/g, '');
+        }
+
+        function onFinishedWarEarningsFocus(warId) {
+            const earningsInput = document.getElementById(`finished-earnings-${warId}`);
+            if (!earningsInput) return;
+            const rawValue = sanitizeIntegerInput(earningsInput.value);
+            earningsInput.value = rawValue;
+        }
+
+        function onFinishedWarEarningsInput(warId) {
+            const earningsInput = document.getElementById(`finished-earnings-${warId}`);
+            if (!earningsInput) return;
+            const rawValue = sanitizeIntegerInput(earningsInput.value);
+            earningsInput.value = rawValue;
+            saveFinishedWarInputField(warId, 'totalEarnings', rawValue);
+            updateFinishedWarPayouts(warId);
+        }
+
+        function onFinishedWarEarningsBlur(warId) {
+            const earningsInput = document.getElementById(`finished-earnings-${warId}`);
+            if (!earningsInput) return;
+            const rawValue = sanitizeIntegerInput(earningsInput.value);
+            earningsInput.value = formatWholeDollarValue(rawValue);
+            saveFinishedWarInputField(warId, 'totalEarnings', rawValue);
+            updateFinishedWarPayouts(warId);
+        }
+
+        function onFinishedWarCutPercentInput(warId) {
+            const cutPercentInput = document.getElementById(`finished-cut-percent-${warId}`);
+            if (!cutPercentInput) return;
+            saveFinishedWarInputField(warId, 'cutPercent', cutPercentInput.value);
+            updateFinishedWarPayouts(warId);
+        }
+
+        function updateFinishedWarPayouts(warId) {
+            const earningsInput = document.getElementById(`finished-earnings-${warId}`);
+            const cutPercentInput = document.getElementById(`finished-cut-percent-${warId}`);
+            const cutValueEl = document.getElementById(`finished-cut-value-${warId}`);
+            const totalPayEl = document.getElementById(`finished-total-pay-${warId}`);
+
+            const totalEarnings = parseInt(sanitizeIntegerInput(earningsInput?.value || '0'), 10) || 0;
+            const cutPercent = parseInt(cutPercentInput?.value || '0', 10) || 0;
+            const factionCutValue = Math.round(totalEarnings * (cutPercent / 100));
+            const totalPay = totalEarnings - factionCutValue;
+
+            cutValueEl.textContent = formatWholeDollarValue(factionCutValue);
+            totalPayEl.textContent = formatWholeDollarValue(totalPay);
+        }
+
+        function formatWholeDollarValue(value) {
+            if (value === '' || value === null || value === undefined) {
+                return '';
+            }
+            return Number(value || 0).toLocaleString('en-US');
         }
 
         async function loadOngoingWarReport(tile, details) {
