@@ -112,14 +112,22 @@
         </div>
 
         <div class="help-section">
-            <h2>Which Attacks Count For Ongoing Wars</h2>
+            <h2>Ongoing Wars</h2>
             <div class="help-card">
+                <h3>Which Attacks Count</h3>
                 <p>Ongoing war results are built from outgoing faction attacks and filtered to only include attacks that belong to the active ranked war.</p>
                 <ul class="help-list">
                     <li>The attack must happen during the active war window, starting from the war start timestamp.</li>
                     <li>The defender must belong to the enemy faction for that ranked war.</li>
                     <li>The result must be one of: <strong>Attacked</strong>, <strong>Hospitalized</strong>, or <strong>Bounty</strong>.</li>
                     <li>Other attack results are ignored and do not count as attacks in the table.</li>
+                </ul>
+
+                <h3>Refreshing Data</h3>
+                <p>On the top right of the user table you'll find buttons to update the data.</p>
+                <ul class="help-list">
+                    <li><strong>Update Table (&#x1F504;)</strong>: Refreshes the user table with the latest data. This is the usual way to refresh and most friendly to the Torn API.</li>
+                    <li><strong>Clear Cache (&#10060;)</strong>: Clears the local cache to force a full data reload. Use this if the data seems outdated or incorrect. This will generate more requests to the Torn API than the Update Table button.</li>
                 </ul>
             </div>
         </div>
