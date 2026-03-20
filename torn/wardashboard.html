@@ -16,12 +16,15 @@ Requirements:
 9. Finished war payout column shows the value "n/a" if the target field is not filled.
 10. Ongoing wars build the report from outgoing faction attacks filtered to the active war window.
 11. Ongoing war tables show all current faction members, including members with 0 hits.
-12. Ongoing war tables include hits and score, where score is calculated from respect gain.
+12. Ongoing war tables include attacks and score, where score is calculated from respect gain.
 13. Ongoing war attack aggregation is cached and can be refreshed incrementally.
 14. Ongoing war tables provide update and clear-cache controls.
 15. If the API key lacks the required faction attack permissions for ongoing wars, a clear permission error is shown.
 16. If the user is not logged in, a login prompt is shown, and the page reloads automatically after login.
 17. All money values are whole dollars.
+18. A help button links to a dedicated War Dashboard help page.
+19. The help page documents the dashboard purpose, table columns, finished-war inputs, local-only storage, payout calculation, and which ongoing-war attacks count.
+20. On narrow screens, war tables stack each row into a multi-line card layout so all columns remain visible.
 
 -->
 <!DOCTYPE html>
@@ -191,6 +194,49 @@ Requirements:
             color: #666;
             font-weight: bold;
             min-width: 14px;
+        }
+
+        @media screen and (max-width: 768px) {
+            .war-details {
+                padding: 14px 16px;
+            }
+
+            .war-report-table thead {
+                display: none;
+            }
+
+            .war-report-table,
+            .war-report-table tbody,
+            .war-report-table tr,
+            .war-report-table td {
+                display: block;
+                width: 100%;
+            }
+
+            .war-report-table tr {
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                padding: 10px 12px;
+                margin-bottom: 12px;
+                background-color: #fff;
+            }
+
+            .war-report-table td {
+                border-bottom: none;
+                padding: 6px 0;
+                text-align: left;
+                word-break: break-word;
+            }
+
+            .war-report-table td::before {
+                content: attr(data-label) ": ";
+                font-weight: bold;
+                color: #666;
+            }
+
+            .war-report-table tr:hover td {
+                background-color: transparent;
+            }
         }
     </style>
 </head>
@@ -470,10 +516,10 @@ Requirements:
                     <tbody>`;
             for (const m of members) {
                 html += `<tr>
-                    <td><a href="https://www.torn.com/profiles.php?XID=${m.id}" target="_blank">${escapeHtml(m.name)} [${m.id}]</a></td>
-                    <td data-finished-war-hits="${m.attacks}">${m.attacks}</td>
-                    <td>${m.score.toFixed(2)}</td>
-                    <td id="finished-payout-${warId}-${m.id}">n/a</td>
+                    <td data-label="Member"><a href="https://www.torn.com/profiles.php?XID=${m.id}" target="_blank">${escapeHtml(m.name)} [${m.id}]</a></td>
+                    <td data-label="Attacks" data-finished-war-hits="${m.attacks}">${m.attacks}</td>
+                    <td data-label="Score">${m.score.toFixed(2)}</td>
+                    <td data-label="Payout" id="finished-payout-${warId}-${m.id}">n/a</td>
                 </tr>`;
             }
             html += `</tbody></table>`;
@@ -709,9 +755,9 @@ Requirements:
             } else {
                 for (const m of members) {
                     html += `<tr>
-                        <td><a href="https://www.torn.com/profiles.php?XID=${m.id}" target="_blank">${escapeHtml(m.name)} [${m.id}]</a></td>
-                        <td>${m.hits}</td>
-                        <td>${m.score.toFixed(2)}</td>
+                        <td data-label="Member"><a href="https://www.torn.com/profiles.php?XID=${m.id}" target="_blank">${escapeHtml(m.name)} [${m.id}]</a></td>
+                        <td data-label="Attacks">${m.hits}</td>
+                        <td data-label="Score">${m.score.toFixed(2)}</td>
                     </tr>`;
                 }
             }
