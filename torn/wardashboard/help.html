@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>War Dashboard Help - Torn Tools</title>
+    <link rel="stylesheet" href="../styles.css">
+    <script src="../auth.js"></script>
+    <style>
+        .container {
+            max-width: 900px;
+        }
+
+        .help-section {
+            margin-top: 28px;
+        }
+
+        .help-card {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 18px;
+            border: 1px solid #e5e5e5;
+            margin-top: 14px;
+        }
+
+        .help-card p:last-child,
+        .help-card ul:last-child {
+            margin-bottom: 0;
+        }
+
+        .help-list {
+            margin: 10px 0 0;
+            padding-left: 20px;
+        }
+
+        .help-list li {
+            margin-bottom: 8px;
+        }
+
+        .formula {
+            font-family: Consolas, monospace;
+            background-color: #f5f5f5;
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid #e0e0e0;
+            display: inline-block;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        renderHeader({
+            showBackButton: true,
+            maxWidth: '900px',
+            backHref: '../wardashboard.html',
+            backLabel: '← Back to War Dashboard'
+        });
+    </script>
+    <div class="container" style="max-width: 900px;">
+        <h1>War Dashboard Help</h1>
+        <p class="subtitle">Guide to the War Dashboard page, payout inputs, and how the reported values are calculated.</p>
+
+        <div class="help-section">
+            <h2>Introduction</h2>
+            <div class="help-card">
+                <p>The War Dashboard gives a quick overview of your faction's most recent ranked wars. Each war appears as its own tile with the opponent name and current status.</p>
+                <p>When you open a tile, the page shows detailed member performance for that war. Finished wars use the ranked war report from Torn. Ongoing wars are built from outgoing faction attacks that match the active ranked war.</p>
+            </div>
+        </div>
+
+        <div class="help-section">
+            <h2>Table Columns</h2>
+            <div class="help-card">
+                <p>Finished wars and ongoing wars use similar tables, but not all columns are available for both.</p>
+                <ul class="help-list">
+                    <li><strong>Member</strong>: The player name and Torn user ID. Clicking it opens that player's Torn profile.</li>
+                    <li><strong>Attacks</strong> or <strong>Hits</strong>: The number of counted war hits for that member.</li>
+                    <li><strong>Score</strong>: For finished wars this comes directly from the ranked war report. For ongoing wars it is the sum of <code>respect_gain</code> from counted attacks.</li>
+                    <li><strong>Payout</strong>: Finished wars only. This is the member's calculated share of the total pay based on their counted hits, capped by the target value.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="help-section">
+            <h2>Finished War Inputs</h2>
+            <div class="help-card">
+                <ul class="help-list">
+                    <li><strong>Target</strong>: The maximum number of hits per member that count toward payout calculations.</li>
+                    <li><strong>Total Earnings</strong>: The total dollar amount earned for the war.</li>
+                    <li><strong>Faction cut</strong>: The faction percentage taken from total earnings before member payouts are calculated.</li>
+                    <li><strong>Faction cut value</strong>: The dollar amount removed from total earnings using the faction cut percentage.</li>
+                    <li><strong>Total Pay</strong>: The amount remaining after the faction cut. This is the amount distributed across member payouts.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="help-section">
+            <h2>Local Storage</h2>
+            <div class="help-card">
+                <p>The finished war input fields are stored locally in your browser on your device. They are not uploaded to the Torn API, not shared with other users, and not synchronized between browsers or machines.</p>
+            </div>
+        </div>
+
+        <div class="help-section">
+            <h2>Payout Calculation</h2>
+            <div class="help-card">
+                <p>For finished wars, member payout is calculated from total pay, the total number of attacks in the table, and the target cap.</p>
+                <div class="formula">(total_pay / total_hits) * min(user_hits, target)</div>
+                <ul class="help-list">
+                    <li><strong>total_pay</strong>: Total Earnings minus the faction cut value.</li>
+                    <li><strong>total_hits</strong>: The sum of all member attacks shown in the finished war table.</li>
+                    <li><strong>user_hits</strong>: The member's own number of attacks.</li>
+                    <li><strong>target</strong>: The cap applied to each member's hits for payout purposes.</li>
+                </ul>
+                <p>If the target field is empty, the payout column shows <code>n/a</code>.</p>
+            </div>
+        </div>
+
+        <div class="help-section">
+            <h2>Which Hits Count For Ongoing Wars</h2>
+            <div class="help-card">
+                <p>Ongoing war results are built from outgoing faction attacks and filtered to only include attacks that belong to the active ranked war.</p>
+                <ul class="help-list">
+                    <li>The attack must happen during the active war window, starting from the war start timestamp.</li>
+                    <li>The defender must belong to the enemy faction for that ranked war.</li>
+                    <li>The result must be one of: <strong>Attacked</strong>, <strong>Hospitalized</strong>, or <strong>Bounty</strong>.</li>
+                    <li>Other attack results are ignored and do not count as hits.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

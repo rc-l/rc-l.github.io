@@ -183,9 +183,16 @@ function headerLogout() {
  * @param {Object} options - Configuration options
  * @param {boolean} options.showBackButton - Whether to show back button (default: false)
  * @param {string} options.maxWidth - Maximum width of header (default: '800px')
+ * @param {string} options.backHref - Back button target (default: 'index.html')
+ * @param {string} options.backLabel - Back button label (default: '← Back to Tools')
  */
 function renderHeader(options = {}) {
-    const { showBackButton = false, maxWidth = '800px' } = options;
+    const {
+        showBackButton = false,
+        maxWidth = '800px',
+        backHref = 'index.html',
+        backLabel = '← Back to Tools'
+    } = options;
     
     // Create header container
     const headerDiv = document.createElement('div');
@@ -199,10 +206,10 @@ function renderHeader(options = {}) {
     // Add back button if needed
     if (showBackButton) {
         const backLink = document.createElement('a');
-        backLink.href = 'index.html';
+        backLink.href = backHref;
         backLink.className = 'back-button';
         backLink.style.margin = '0';
-        backLink.textContent = '← Back to Tools';
+        backLink.textContent = backLabel;
         headerDiv.appendChild(backLink);
     }
     

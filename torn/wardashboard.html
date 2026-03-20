@@ -197,7 +197,12 @@ Requirements:
 <body>
     <script>renderHeader({ showBackButton: true, maxWidth: '800px' });</script>
     <div class="container">
-        <h1>War Dashboard</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 12px; flex-wrap: wrap;">
+            <h1 style="margin: 0;">War Dashboard</h1>
+            <a href="wardashboard/help.html" class="faq-button" title="War Dashboard Help">
+                <span style="font-size: 20px;">❓</span> Help
+            </a>
+        </div>
         <p class="subtitle">Overview of your faction's ranked wars</p>
 
         <!-- Loading State -->
