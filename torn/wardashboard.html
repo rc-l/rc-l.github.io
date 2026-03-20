@@ -5,9 +5,23 @@ Description:
 This dashboard to get an overview of current and past wars for the whole faction.
 
 Requirements:
-1. A user can see last 10 wars their faction has fought in
-2. A user can the number of hits for all members of past wars based on the war report
-3. A user can see the number of hits for all members in the current war based on the attack log.
+1. A user can see the last 10 ranked wars their faction has fought in as individual tiles.
+2. Each tile shows the opponent faction name and the war status: won, lost, ongoing, or future.
+3. Clicking a tile expands it to show additional information for that war.
+4. Finished wars load faction member results from the ranked war report on demand.
+5. Finished war tables show only the user's faction members with name [id], attacks, score, and payout.
+6. Finished wars include payout input fields for target, total earnings, faction cut percentage, faction cut value, and total pay.
+7. Finished war payout inputs are cached per war and restored after page reload.
+8. Finished war payout column is calculated as (total_pay / total_hits) * min(user_hits, target).
+9. Finished war payout column shows the value "n/a" if the target field is not filled.
+10. Ongoing wars build the report from outgoing faction attacks filtered to the active war window.
+11. Ongoing war tables show all current faction members, including members with 0 hits.
+12. Ongoing war tables include hits and score, where score is calculated from respect gain.
+13. Ongoing war attack aggregation is cached and can be refreshed incrementally.
+14. Ongoing war tables provide update and clear-cache controls.
+15. If the API key lacks the required faction attack permissions for ongoing wars, a clear permission error is shown.
+16. If the user is not logged in, a login prompt is shown, and the page reloads automatically after login.
+17. All money values are whole dollars.
 
 -->
 <!DOCTYPE html>
@@ -407,7 +421,7 @@ Requirements:
                             inputmode="numeric"
                             step="1"
                             value="${escapeHtml(cachedInputs.target)}"
-                            oninput="saveFinishedWarInputField('${warId}', 'target', this.value)"
+                            oninput="onFinishedWarTargetInput('${warId}')"
                         >
                     </div>
                     <div class="war-payout-field">
@@ -447,13 +461,14 @@ Requirements:
                     </div>
                 </div>
                 <table class="war-report-table">
-                    <thead><tr><th>Member</th><th>Attacks</th><th>Score</th></tr></thead>
+                    <thead><tr><th>Member</th><th>Attacks</th><th>Score</th><th>Payout</th></tr></thead>
                     <tbody>`;
             for (const m of members) {
                 html += `<tr>
                     <td><a href="https://www.torn.com/profiles.php?XID=${m.id}" target="_blank">${escapeHtml(m.name)} [${m.id}]</a></td>
-                    <td>${m.attacks}</td>
+                    <td data-finished-war-hits="${m.attacks}">${m.attacks}</td>
                     <td>${m.score.toFixed(2)}</td>
+                    <td id="finished-payout-${warId}-${m.id}">n/a</td>
                 </tr>`;
             }
             html += `</tbody></table>`;
@@ -495,6 +510,13 @@ Requirements:
             saveFinishedWarInputsStore(store);
         }
 
+        function onFinishedWarTargetInput(warId) {
+            const targetInput = document.getElementById(`finished-target-${warId}`);
+            if (!targetInput) return;
+            saveFinishedWarInputField(warId, 'target', targetInput.value);
+            updateFinishedWarPayouts(warId);
+        }
+
         function sanitizeIntegerInput(value) {
             return String(value || '').replace(/[^0-9]/g, '');
         }
@@ -532,18 +554,42 @@ Requirements:
         }
 
         function updateFinishedWarPayouts(warId) {
+            const targetInput = document.getElementById(`finished-target-${warId}`);
             const earningsInput = document.getElementById(`finished-earnings-${warId}`);
             const cutPercentInput = document.getElementById(`finished-cut-percent-${warId}`);
             const cutValueEl = document.getElementById(`finished-cut-value-${warId}`);
             const totalPayEl = document.getElementById(`finished-total-pay-${warId}`);
 
+            const target = parseInt(targetInput?.value || '', 10);
             const totalEarnings = parseInt(sanitizeIntegerInput(earningsInput?.value || '0'), 10) || 0;
             const cutPercent = parseInt(cutPercentInput?.value || '0', 10) || 0;
             const factionCutValue = Math.round(totalEarnings * (cutPercent / 100));
             const totalPay = totalEarnings - factionCutValue;
+            const hitCells = document.querySelectorAll(`[id^="finished-payout-${warId}-"]`);
+            const totalHits = Array.from(document.querySelectorAll(`#war-details-${warId} td[data-finished-war-hits]`))
+                .reduce((sum, cell) => sum + (parseInt(cell.dataset.finishedWarHits || '0', 10) || 0), 0);
 
             cutValueEl.textContent = formatWholeDollarValue(factionCutValue);
             totalPayEl.textContent = formatWholeDollarValue(totalPay);
+
+            for (const payoutCell of hitCells) {
+                const row = payoutCell.parentElement;
+                const hitCell = row?.querySelector('td[data-finished-war-hits]');
+                const userHits = parseInt(hitCell?.dataset.finishedWarHits || '0', 10) || 0;
+
+                if (!Number.isFinite(target)) {
+                    payoutCell.textContent = 'n/a';
+                    continue;
+                }
+
+                if (totalHits <= 0) {
+                    payoutCell.textContent = formatWholeDollarValue(0);
+                    continue;
+                }
+
+                const payoutValue = Math.round((totalPay / totalHits) * Math.min(userHits, target));
+                payoutCell.textContent = formatWholeDollarValue(payoutValue);
+            }
         }
 
         function formatWholeDollarValue(value) {
