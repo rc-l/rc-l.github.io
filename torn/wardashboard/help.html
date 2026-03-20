@@ -75,7 +75,7 @@
                 <p>Finished wars and ongoing wars use similar tables, but not all columns are available for both.</p>
                 <ul class="help-list">
                     <li><strong>Member</strong>: The player name and Torn user ID. Clicking it opens that player's Torn profile.</li>
-                    <li><strong>Attacks</strong> or <strong>Hits</strong>: The number of counted war hits for that member.</li>
+                    <li><strong>Attacks</strong>: The number of counted war attacks for that member.</li>
                     <li><strong>Score</strong>: For finished wars this comes directly from the ranked war report. For ongoing wars it is the sum of <code>respect_gain</code> from counted attacks.</li>
                     <li><strong>Payout</strong>: Finished wars only. This is the member's calculated share of the total pay based on their counted hits, capped by the target value.</li>
                 </ul>
@@ -92,13 +92,7 @@
                     <li><strong>Faction cut value</strong>: The dollar amount removed from total earnings using the faction cut percentage.</li>
                     <li><strong>Total Pay</strong>: The amount remaining after the faction cut. This is the amount distributed across member payouts.</li>
                 </ul>
-            </div>
-        </div>
-
-        <div class="help-section">
-            <h2>Local Storage</h2>
-            <div class="help-card">
-                <p>The finished war input fields are stored locally in your browser on your device. They are not uploaded to the Torn API, not shared with other users, and not synchronized between browsers or machines.</p>
+                <p>The finished war input fields are stored locally in your browser on your device. They are not shared with other users or faction members, are and not synchronized between browsers or machines.</p>
             </div>
         </div>
 
@@ -118,14 +112,14 @@
         </div>
 
         <div class="help-section">
-            <h2>Which Hits Count For Ongoing Wars</h2>
+            <h2>Which Attacks Count For Ongoing Wars</h2>
             <div class="help-card">
                 <p>Ongoing war results are built from outgoing faction attacks and filtered to only include attacks that belong to the active ranked war.</p>
                 <ul class="help-list">
                     <li>The attack must happen during the active war window, starting from the war start timestamp.</li>
                     <li>The defender must belong to the enemy faction for that ranked war.</li>
                     <li>The result must be one of: <strong>Attacked</strong>, <strong>Hospitalized</strong>, or <strong>Bounty</strong>.</li>
-                    <li>Other attack results are ignored and do not count as hits.</li>
+                    <li>Other attack results are ignored and do not count as attacks in the table.</li>
                 </ul>
             </div>
         </div>
