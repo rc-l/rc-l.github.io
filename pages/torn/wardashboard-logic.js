@@ -9,8 +9,8 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     const WAR_ENEMY_FACTION_RESULTS = new Set(['Attacked', 'Hospitalized', 'Bounty', 'Assist']);
     const CHAIN_VICTORY_RESULTS = new Set(['Attacked', 'Mugged', 'Hospitalized', 'Arrested', 'Bounty']);
-    const CHAIN_TIMER_SECONDS = 5 * 60;
     const CHAIN_SAVER_MIN_SECONDS = 4 * 60;
+    const CHAIN_TIMER_SECONDS = 5 * 60;
     const CHAIN_SAVER_MIN_LENGTH = 50;
 
     function getWarStatus(war, factionId, currentTime) {
@@ -46,8 +46,27 @@
         return Number.isFinite(attack?.started) ? attack.started : (attack?.ended || 0);
     }
 
-    function isEnemyFactionWarHit(attack, enemyFactionId) {
-        return getAttackFactionId(attack.defender) === enemyFactionId
+    function getAttackChainValue(attack) {
+        const rawChainValue = attack?.chain;
+        const chainValue = typeof rawChainValue === 'number'
+            ? rawChainValue
+            : Number.NaN;
+        return Number.isFinite(chainValue) ? chainValue : null;
+    }
+
+    function getAttackParticipantName(person) {
+        return typeof person?.name === 'string' && person.name.trim() !== ''
+            ? person.name
+            : null;
+    }
+
+    function isChainVictory(attack) {
+        return CHAIN_VICTORY_RESULTS.has(attack?.result);
+    }
+
+    function isEnemyFactionRankedWarHit(attack, enemyFactionId) {
+        return attack?.is_ranked_war === true
+            && getAttackFactionId(attack?.defender) === enemyFactionId
             && WAR_ENEMY_FACTION_RESULTS.has(attack?.result);
     }
 
@@ -57,75 +76,60 @@
         return attackerFactionId !== null && attackerFactionId === defenderFactionId;
     }
 
-    class ChainTracker {
-        constructor(state = {}) {
-            this.length = Number.isFinite(state.length) ? state.length : 0;
-            this.lastSuccessfulAttackTimestamp = Number.isFinite(state.lastSuccessfulAttackTimestamp)
-                ? state.lastSuccessfulAttackTimestamp
-                : null;
-            this.lastHitWasVictory = false;
-            this.lastHitWasOnTime = false;
-            this.lastHitWasChainSave = false;
-        }
-
-        processAttack(attack) {
-            this.lastHitWasVictory = CHAIN_VICTORY_RESULTS.has(attack?.result);
-            this.lastHitWasOnTime = false;
-            this.lastHitWasChainSave = false;
-
-            if (!this.lastHitWasVictory) {
-                return;
-            }
-
-            const attackTimestamp = getAttackTimestamp(attack);
-            if (!Number.isFinite(attackTimestamp)) {
-                return;
-            }
-
-            if (!Number.isFinite(this.lastSuccessfulAttackTimestamp)) {
-                this.length = 1;
-                this.lastSuccessfulAttackTimestamp = attackTimestamp;
-                return;
-            }
-
-            const secondsSincePreviousSuccess = attackTimestamp - this.lastSuccessfulAttackTimestamp;
-            this.lastHitWasOnTime = secondsSincePreviousSuccess <= CHAIN_TIMER_SECONDS;
-
-            if (this.lastHitWasOnTime) {
-                this.length += 1;
-                this.lastHitWasChainSave = secondsSincePreviousSuccess >= CHAIN_SAVER_MIN_SECONDS
-                    && this.length > CHAIN_SAVER_MIN_LENGTH;
-            } else {
-                this.length = 1;
-            }
-
-            this.lastSuccessfulAttackTimestamp = attackTimestamp;
-        }
-
-        is_victory() {
-            return this.lastHitWasVictory;
-        }
-
-        was_on_time() {
-            return this.lastHitWasOnTime;
-        }
-
-        is_chain_save() {
-            return this.lastHitWasChainSave;
-        }
-
-        getState() {
-            return {
-                lastSuccessfulAttackTimestamp: this.lastSuccessfulAttackTimestamp,
-                length: this.length
-            };
-        }
+    function normalizeChainContext(chainContext) {
+        return {
+            lastChainValue: Number.isFinite(chainContext?.lastChainValue) ? chainContext.lastChainValue : null,
+            lastChainTimestamp: Number.isFinite(chainContext?.lastChainTimestamp) ? chainContext.lastChainTimestamp : null
+        };
     }
 
-    function shouldCountChainSaveWarHit(attack, enemyFactionId, chainTracker) {
-        if (getAttackFactionId(attack.defender) === enemyFactionId) return false;
+    function didAdvanceChain(attack, chainContext) {
+        if (!isChainVictory(attack)) {
+            return false;
+        }
+
+        const attackChainValue = getAttackChainValue(attack);
+        if (!Number.isFinite(attackChainValue)) {
+            return false;
+        }
+
+        if (!Number.isFinite(chainContext.lastChainValue)) {
+            return attackChainValue >= 1;
+        }
+
+        return attackChainValue > chainContext.lastChainValue;
+    }
+
+    function updateChainContext(attack, attackTimestamp, chainContext) {
+        if (!isChainVictory(attack)) {
+            return chainContext;
+        }
+
+        const attackChainValue = getAttackChainValue(attack);
+        if (!Number.isFinite(attackChainValue)) {
+            return chainContext;
+        }
+
+        return {
+            lastChainValue: attackChainValue,
+            lastChainTimestamp: attackTimestamp
+        };
+    }
+
+    function shouldCountChainSaveWarHit(attack, enemyFactionId, chainContext) {
+        if (getAttackFactionId(attack?.defender) === enemyFactionId) return false;
         if (areAttackParticipantsInSameFaction(attack)) return false;
-        return chainTracker.is_chain_save();
+        if (!didAdvanceChain(attack, chainContext)) return false;
+
+        const attackTimestamp = getAttackTimestamp(attack);
+        const secondsSincePreviousChainHit = attackTimestamp - chainContext.lastChainTimestamp;
+        const attackChainValue = getAttackChainValue(attack);
+
+        return Number.isFinite(chainContext.lastChainTimestamp)
+            && secondsSincePreviousChainHit >= CHAIN_SAVER_MIN_SECONDS
+            && secondsSincePreviousChainHit <= CHAIN_TIMER_SECONDS
+            && Number.isFinite(attackChainValue)
+            && attackChainValue > CHAIN_SAVER_MIN_LENGTH;
     }
 
     function aggregateWarMemberHits({
@@ -134,11 +138,11 @@
         warStart,
         warEnd = null,
         enemyFactionId,
-        chainState = null,
+        chainContext = null,
         lastAttackTimestamp = null
     }) {
         let latestTimestamp = Number.isFinite(lastAttackTimestamp) ? lastAttackTimestamp : Math.max(warStart - 1, 0);
-        const chainTracker = new ChainTracker(chainState || {});
+        let currentChainContext = normalizeChainContext(chainContext);
 
         for (const attack of attacks) {
             const attackTimestamp = getAttackTimestamp(attack);
@@ -146,24 +150,30 @@
             if (attackTimestamp < warStart) continue;
             if (Number.isFinite(warEnd) && attackTimestamp > warEnd) continue;
 
-            chainTracker.processAttack(attack);
-
             const attackerId = attack.attacker?.id;
-            if (!attackerId) continue;
+            const attackerName = getAttackParticipantName(attack?.attacker);
+            const shouldCountHit = isEnemyFactionRankedWarHit(attack, enemyFactionId)
+                || shouldCountChainSaveWarHit(attack, enemyFactionId, currentChainContext);
 
-            if (isEnemyFactionWarHit(attack, enemyFactionId) || shouldCountChainSaveWarHit(attack, enemyFactionId, chainTracker)) {
+            if (attackerId && shouldCountHit) {
                 if (!memberHits[attackerId]) {
-                    memberHits[attackerId] = { id: attackerId, name: null, hits: 0, score: 0 };
+                    memberHits[attackerId] = { id: attackerId, name: attackerName, hits: 0, score: 0 };
+                } else if (!memberHits[attackerId].name && attackerName) {
+                    memberHits[attackerId].name = attackerName;
                 }
                 memberHits[attackerId].hits += 1;
                 memberHits[attackerId].score += Number(attack.respect_gain || 0);
+            } else if (attackerId && memberHits[attackerId] && !memberHits[attackerId].name && attackerName) {
+                memberHits[attackerId].name = attackerName;
             }
+
+            currentChainContext = updateChainContext(attack, attackTimestamp, currentChainContext);
         }
 
         return {
             memberHits,
             lastAttackTimestamp: latestTimestamp,
-            chainState: chainTracker.getState()
+            chainContext: currentChainContext
         };
     }
 
@@ -172,7 +182,6 @@
     }
 
     return {
-        ChainTracker,
         aggregateWarMemberHits,
         getEnemyFactionId,
         getOpponentName,

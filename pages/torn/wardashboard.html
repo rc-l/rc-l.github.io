@@ -8,19 +8,19 @@ Requirements:
 1. A user can see the last 10 ranked wars their faction has fought in as individual tiles.
 2. Each tile shows the opponent faction name and the war status: won, lost, ongoing, or future.
 3. Clicking a tile expands it to show additional information for that war.
-4. Finished wars load faction member results from outgoing faction attacksfull data filtered to the war start and end timestamps.
+4. Finished wars load faction member results from outgoing faction attacks data filtered to the war start and end timestamps.
 5. Finished war tables show counted attacks, score, and payout using the same hit rules and chain tracking as ongoing wars.
 6. Finished wars include payout input fields for target, total earnings, faction cut percentage, faction cut value, and total pay.
 7. Finished war payout inputs are cached per war and restored after page reload.
 8. Finished war payout column is calculated as (total_pay / total_hits) * min(user_hits, target).
 9. Finished war payout column shows the value "n/a" if the target field is not filled.
-10. Finished and ongoing wars build the report from outgoing faction attacks returned by /faction/attacksfull and filtered to the relevant war window.
+10. Finished and ongoing wars build the report from outgoing faction attacks returned by /faction/attacks and filtered to the relevant war window.
 11. War counted hits include enemy-faction hits with result Attacked, Hospitalized, Bounty, or Assist.
-12. War counted hits also include chain-saver victories outside the enemy faction when the chain tracker determines the hit was a successful chain save on a chain of length 50 or more.
+12. War counted hits also include chain-saver victories outside the enemy faction when the detailed attack data shows the hit advanced the faction chain inside the chain-save window on a chain above 50.
 13. Finished war attack aggregation is cached per war in browser localStorage so it survives page reloads and later visits in the same browser.
 14. Ongoing war tables show all current faction members, including members with 0 hits.
 15. Ongoing war tables include attacks and score, where score is calculated from respect gain of counted attacks.
-16. Ongoing war attack aggregation is cached, including chain state, and can be refreshed incrementally.
+16. Ongoing war attack aggregation is cached, including the last known chain context, and can be refreshed incrementally.
 17. Finished war tables provide a Clear Cache control positioned above the report table, and ongoing war tables provide update and clear-cache controls.
 18. If the API key lacks the required faction attack permissions for finished or ongoing wars, a clear permission error is shown.
 19. If the user is not logged in, a login prompt is shown, and the page reloads automatically after login.
@@ -304,13 +304,13 @@ Requirements:
             formatWholeDollarValue,
             sanitizeIntegerInput
         } = window.WarDashboardPayouts;
-        const FINISHED_WAR_CACHE_STORAGE_KEY = 'wardashboard_finished_war_cache';
+        const FINISHED_WAR_CACHE_STORAGE_KEY = 'wardashboard_finished_war_cache_v2';
         const _finishedWarCache = loadFinishedWarCacheStore();
         const FINISHED_WAR_INPUTS_STORAGE_KEY = 'wardashboard_finished_war_inputs';
         let _currentRateLimitMessage = '';
 
         // Cache for ongoing war attack aggregation
-        // { warId, lastAttackTimestamp, chainState: { lastSuccessfulAttackTimestamp, length }, memberHits: { memberId: { name, id, hits, score } } }
+        // { warId, lastAttackTimestamp, chainContext: { lastChainValue, lastChainTimestamp }, memberHits: { memberId: { name, id, hits, score } } }
         let _ongoingWarCache = null;
 
         function formatRateLimitMessage(detail) {
@@ -504,7 +504,7 @@ Requirements:
                         warStart,
                         warEnd,
                         enemyFactionId,
-                        chainState: null
+                        chainContext: null
                     });
                     await resolveUnknownMemberNames(aggregation.memberHits);
                     cachedWar = aggregation;
@@ -755,18 +755,18 @@ Requirements:
 
                 let memberHits;   // { memberId: { name, id, hits, score } }
                 let fromTimestamp;
-                let chainState;
+                let chainContext;
 
                 if (_ongoingWarCache && _ongoingWarCache.warId === warId) {
                     // Incremental fetch: only attacks newer than last cached
                     memberHits = _ongoingWarCache.memberHits;
                     fromTimestamp = Math.max(_ongoingWarCache.lastAttackTimestamp + 1, warStart);
-                    chainState = _ongoingWarCache.chainState;
+                    chainContext = _ongoingWarCache.chainContext;
                 } else {
                     // Fresh load: seed member list from /faction/members (all start at 0 hits)
                     memberHits = await createFactionMemberHitsSeed();
                     fromTimestamp = warStart;
-                    chainState = null;
+                    chainContext = null;
                 }
 
                 const [attacks] = await Promise.all([
@@ -778,7 +778,7 @@ Requirements:
                     memberHits,
                     warStart,
                     enemyFactionId,
-                    chainState,
+                    chainContext,
                     lastAttackTimestamp: _ongoingWarCache ? _ongoingWarCache.lastAttackTimestamp : null
                 });
 
@@ -787,7 +787,7 @@ Requirements:
                 _ongoingWarCache = {
                     warId,
                     lastAttackTimestamp: aggregation.lastAttackTimestamp,
-                    chainState: aggregation.chainState,
+                    chainContext: aggregation.chainContext,
                     memberHits: aggregation.memberHits
                 };
 

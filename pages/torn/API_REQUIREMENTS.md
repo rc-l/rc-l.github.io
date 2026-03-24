@@ -33,29 +33,39 @@ This document outlines the Torn API endpoints used by the War Hits Tracker and t
 - **Response Data Used**:
   - `timestamp`: Current server Unix timestamp
 
-### 5. `/user/attacksfull` (GET)
-- **Purpose**: Retrieve simplified attack history to count war hits
+### 5. `/faction/attacks` (GET)
+- **Purpose**: Retrieve detailed outgoing faction attack history for the War Dashboard
 - **Required Permission**: **Limited Access Key**
 - **Query Parameters**:
-  - `from`: Unix timestamp to filter attacks from (set to earliest war start)
-  - `limit`: Maximum number of attacks to return (set to 1000)
+  - `filters`: Set to `outgoing`
+  - `from`: Unix timestamp to filter attacks from
+  - `to`: Unix timestamp to filter attacks up to the war end for finished wars
+  - `limit`: Maximum number of attacks to return per page (set to 100)
+  - `sort`: Set to `asc` so attacks can be processed in time order
 - **Response Data Used**:
   - `attacks`: Collection of attack objects
-  - For each attack: `is_ranked_war`, `defender.faction.id`, `respect_gain`
+  - For each attack: `is_ranked_war`, `chain`, `attacker.id`, `attacker.name`, `attacker.faction.id`, `defender.faction.id`, `result`, `respect_gain`
 
 ## API Key Permission Levels
 
 ### For Basic Functionality (War Status Only)
 **Public Access Key** - View your profile, faction, and war status
 
-### For Full Functionality (War Status + Hit Counting)
-**Limited Access Key** - Required to access attack history for counting your war hits
+### For Full Functionality (War Status + War Dashboard Counting)
+**Limited Access Key** - Required to access faction attack history for counting ranked-war hits and chain saves
 
 ### Hit Counting Logic
-A war hit is counted when ALL of the following conditions are met:
+A direct ranked-war hit is counted when ALL of the following conditions are met:
 1. `is_ranked_war` is `true`
 2. `defender.faction.id` matches the enemy faction ID
-3. `respect_gain` > 0 (successful attack)
+3. `result` is one of `Attacked`, `Hospitalized`, `Bounty`, or `Assist`
+
+An out-of-faction chain saver also counts when ALL of the following conditions are met:
+1. The defender is not in the enemy faction
+2. The attacker and defender are not in the same faction
+3. The attack is a successful chain-advancing result
+4. The attack lands between 4 and 5 minutes after the previous successful chain hit
+5. The resulting API `chain` value is greater than 50
 
 ## API Base URL
 
@@ -82,6 +92,6 @@ fetch('https://api.torn.com/v2/user/basic', {
 
 ## Notes
 
-- All endpoints are called in parallel to minimize loading time
+- War data endpoints are called in parallel where possible, but faction attacks are paged sequentially because the API returns pagination links
 - Error handling is implemented for failed API calls
 - CORS is supported by the Torn API for client-side JavaScript calls

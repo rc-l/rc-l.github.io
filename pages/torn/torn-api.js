@@ -466,7 +466,7 @@ async function fetchFactionMembers(apiKey) {
 }
 
 /**
- * Fetch all outgoing faction attacks with pagination using the simplified endpoint
+ * Fetch all outgoing faction attacks with pagination using the detailed endpoint.
  * @param {string} apiKey - The Torn API key
  * @param {number} from - Only return attacks after this timestamp
  * @param {number|null} to - Only return attacks up to this timestamp
@@ -478,10 +478,10 @@ async function fetchFactionAttacks(apiKey, from, to = null) {
     const seenAttackKeys = new Set();
 
     function buildPageUrl(fromTimestamp) {
-        return buildTornApiUrl('faction/attacksfull', {
+        return buildTornApiUrl('faction/attacks', {
             filters: 'outgoing',
             sort: 'asc',
-            limit: 1000,
+            limit: 100,
             from: fromTimestamp,
             to: Number.isFinite(to) ? to : null
         });

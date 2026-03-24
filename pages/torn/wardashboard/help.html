@@ -65,7 +65,7 @@
             <h2>Introduction</h2>
             <div class="help-card">
                 <p>The War Dashboard gives a quick overview of your faction's most recent ranked wars. Each war appears as its own tile with the opponent name and current status.</p>
-                <p>When you open a tile, the page shows detailed member performance for that war. Finished wars and ongoing wars are both built from outgoing faction attacks returned by Torn's simplified faction attack endpoint.</p>
+                <p>When you open a tile, the page shows detailed member performance for that war. Finished wars and ongoing wars are both built from outgoing faction attacks returned by Torn's detailed faction attack endpoint.</p>
             </div>
         </div>
 
@@ -99,7 +99,7 @@
         <div class="help-section">
             <h2>Finished Wars</h2>
             <div class="help-card">
-                <p>Finished wars use the same counted-hit and chain-tracking logic as ongoing wars, but the attack list is filtered to the war's start and end timestamps.</p>
+                <p>Finished wars use the same counted-hit and chain-save logic as ongoing wars, but the attack list is filtered to the war's start and end timestamps.</p>
                 <p>Finished war results are cached per war after they load. Use the <strong>Clear Cache (&#10060;)</strong> button above the finished war table to force a full reload for that war.</p>
             </div>
         </div>
@@ -125,11 +125,10 @@
                 <h3>Which Attacks Count</h3>
                 <p>Ongoing war results are built from outgoing faction attacks during the active war window, starting from the ranked war start timestamp.</p>
                 <ul class="help-list">
-                    <li><strong>Enemy faction hits</strong>: Because the simplified attack endpoint does not include <code>is_ranked_war</code>, the dashboard treats an attack as a war hit when the defender belongs to the enemy faction for that war and the result is <strong>Attacked</strong>, <strong>Hospitalized</strong>, <strong>Bounty</strong>, or <strong>Assist</strong>.</li>
-                    <li><strong>Chain saver hits</strong>: A non-enemy-faction hit can also count when the attacker and defender are not in the same faction and the chain tracker marks the hit as a chain saver. A chain saver is a successful attack made between <strong>4 minutes</strong> and <strong>5 minutes</strong> of the previous successful chain hit on a chain of length at least <strong>50</strong>.</li>
-                    <li>The chain tracker processes all outgoing attacks in time order, including hits that already count as enemy-faction war hits, so the chain state stays accurate while a war is active.</li>
-                    <li>Only successful attacks advance the chain: <strong>Attacked</strong>, <strong>Mugged</strong>, <strong>Hospitalized</strong>, <strong>Arrested</strong>, and <strong>Bounty</strong>. Results such as <strong>Lost</strong> and <strong>Assist</strong> do not advance the chain and do not reset the timer.</li>
-                    <li>A chain starts at length 1 on the first successful attack. The first 10 successful attacks form the warm-up period and must keep landing within 5 minutes of the previous successful chain hit. If more than 5 minutes pass between successful hits, the chain breaks and the triggering successful hit starts a new chain at length 1.</li>
+                    <li><strong>Enemy faction hits</strong>: An attack counts as a direct ranked-war hit when Torn marks <code>is_ranked_war</code> as true, the defender belongs to the enemy faction for that war, and the result is <strong>Attacked</strong>, <strong>Hospitalized</strong>, <strong>Bounty</strong>, or <strong>Assist</strong>.</li>
+                    <li><strong>Chain saver hits</strong>: A non-enemy-faction hit can also count when the attacker and defender are not in the same faction and the detailed attack data shows that the hit advanced the faction chain into the chain-save window. A chain saver is a successful chain-advancing attack made between <strong>4 minutes</strong> and <strong>5 minutes</strong> after the previous successful chain hit, with the resulting chain value greater than <strong>50</strong>.</li>
+                    <li>The dashboard still processes outgoing attacks in time order so the cached chain context stays accurate while a war is active, but it now relies on Torn's reported chain values instead of rebuilding the full chain count locally.</li>
+                    <li>Only successful chain-advancing attacks can qualify as chain saves: <strong>Attacked</strong>, <strong>Mugged</strong>, <strong>Hospitalized</strong>, <strong>Arrested</strong>, and <strong>Bounty</strong>. Results such as <strong>Lost</strong> and <strong>Assist</strong> do not qualify as chain saves.</li>
                     <li>The ongoing-war score is the sum of <code>respect_gain</code> from counted attacks, so some counted results such as <strong>Assist</strong> may still add 0 score.</li>
                 </ul>
 
