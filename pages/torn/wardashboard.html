@@ -8,23 +8,26 @@ Requirements:
 1. A user can see the last 10 ranked wars their faction has fought in as individual tiles.
 2. Each tile shows the opponent faction name and the war status: won, lost, ongoing, or future.
 3. Clicking a tile expands it to show additional information for that war.
-4. Finished wars load faction member results from the ranked war report on demand.
-5. Finished war tables show only the user's faction members with name [id], attacks, score, and payout.
+4. Finished wars load faction member results from outgoing faction attacksfull data filtered to the war start and end timestamps.
+5. Finished war tables show counted attacks, score, and payout using the same hit rules and chain tracking as ongoing wars.
 6. Finished wars include payout input fields for target, total earnings, faction cut percentage, faction cut value, and total pay.
 7. Finished war payout inputs are cached per war and restored after page reload.
 8. Finished war payout column is calculated as (total_pay / total_hits) * min(user_hits, target).
 9. Finished war payout column shows the value "n/a" if the target field is not filled.
-10. Ongoing wars build the report from outgoing faction attacks filtered to the active war window.
-11. Ongoing war tables show all current faction members, including members with 0 hits.
-12. Ongoing war tables include attacks and score, where score is calculated from respect gain.
-13. Ongoing war attack aggregation is cached and can be refreshed incrementally.
-14. Ongoing war tables provide update and clear-cache controls.
-15. If the API key lacks the required faction attack permissions for ongoing wars, a clear permission error is shown.
-16. If the user is not logged in, a login prompt is shown, and the page reloads automatically after login.
-17. All money values are whole dollars.
-18. A help button links to a dedicated War Dashboard help page.
-19. The help page documents the dashboard purpose, table columns, finished-war inputs, local-only storage, payout calculation, and which ongoing-war attacks count.
-20. On narrow screens, war tables stack each row into a multi-line card layout so all columns remain visible.
+10. Finished and ongoing wars build the report from outgoing faction attacks returned by /faction/attacksfull and filtered to the relevant war window.
+11. War counted hits include enemy-faction hits with result Attacked, Hospitalized, Bounty, or Assist.
+12. War counted hits also include chain-saver victories outside the enemy faction when the chain tracker determines the hit was a successful chain save on a chain of length 50 or more.
+13. Finished war attack aggregation is cached per war in browser localStorage so it survives page reloads and later visits in the same browser.
+14. Ongoing war tables show all current faction members, including members with 0 hits.
+15. Ongoing war tables include attacks and score, where score is calculated from respect gain of counted attacks.
+16. Ongoing war attack aggregation is cached, including chain state, and can be refreshed incrementally.
+17. Finished war tables provide a Clear Cache control positioned above the report table, and ongoing war tables provide update and clear-cache controls.
+18. If the API key lacks the required faction attack permissions for finished or ongoing wars, a clear permission error is shown.
+19. If the user is not logged in, a login prompt is shown, and the page reloads automatically after login.
+20. All money values are whole dollars.
+21. A help button links to a dedicated War Dashboard help page.
+22. The help page documents the dashboard purpose, table columns, finished-war inputs, local-only storage, persistent finished-war result caching, payout calculation, and which finished-war and ongoing-war attacks count.
+23. On narrow screens, war tables stack each row into a multi-line card layout so all columns remain visible.
 
 -->
 <!DOCTYPE html>
@@ -36,6 +39,8 @@ Requirements:
     <link rel="stylesheet" href="styles.css">
     <script src="auth.js"></script>
     <script src="torn-api.js"></script>
+    <script src="wardashboard-logic.js"></script>
+    <script src="wardashboard-payouts.js"></script>
     <style>
         .wars-list {
             margin-top: 20px;
@@ -139,6 +144,20 @@ Requirements:
             color: #666;
             font-style: italic;
             padding: 10px 0;
+        }
+
+        .rate-limit-notice {
+            display: none;
+            margin: 0 0 16px;
+            padding: 12px 14px;
+            border-radius: 6px;
+            border: 1px solid #ffe08a;
+            background-color: #fff7db;
+            color: #7a5600;
+        }
+
+        .rate-limit-notice.visible {
+            display: block;
         }
 
         .war-report-error {
@@ -250,10 +269,11 @@ Requirements:
             </a>
         </div>
         <p class="subtitle">Overview of your faction's ranked wars</p>
+        <div id="rateLimitNotice" class="rate-limit-notice"></div>
 
         <!-- Loading State -->
         <div id="loadingState" style="display: none; padding: 20px; text-align: center;">
-            <p>Loading war data...</p>
+            <p id="loadingStateMessage">Loading war data...</p>
         </div>
 
         <!-- Error State -->
@@ -272,12 +292,68 @@ Requirements:
     <script>
         let _apiKey = null;
         let _factionId = null;
-        const _reportCache = {};
+        const {
+            aggregateWarMemberHits,
+            getEnemyFactionId,
+            getOpponentName,
+            getWarStatus,
+            sortMemberHitsForDisplay
+        } = window.WarDashboardLogic;
+        const {
+            calculateFinishedWarPayouts,
+            formatWholeDollarValue,
+            sanitizeIntegerInput
+        } = window.WarDashboardPayouts;
+        const FINISHED_WAR_CACHE_STORAGE_KEY = 'wardashboard_finished_war_cache';
+        const _finishedWarCache = loadFinishedWarCacheStore();
         const FINISHED_WAR_INPUTS_STORAGE_KEY = 'wardashboard_finished_war_inputs';
+        let _currentRateLimitMessage = '';
 
         // Cache for ongoing war attack aggregation
-        // { warId, lastAttackTimestamp, memberHits: { memberId: { name, id, hits } } }
+        // { warId, lastAttackTimestamp, chainState: { lastSuccessfulAttackTimestamp, length }, memberHits: { memberId: { name, id, hits, score } } }
         let _ongoingWarCache = null;
+
+        function formatRateLimitMessage(detail) {
+            const retryAt = detail?.retryAt ? new Date(detail.retryAt) : null;
+            const retryTime = retryAt && !Number.isNaN(retryAt.getTime())
+                ? retryAt.toLocaleTimeString()
+                : null;
+            return retryTime
+                ? `Torn API rate limit hit. Retrying automatically around ${retryTime}.`
+                : 'Torn API rate limit hit. Retrying automatically.';
+        }
+
+        function updateRateLimitNotice(message) {
+            const notice = document.getElementById('rateLimitNotice');
+            const loadingMessage = document.getElementById('loadingStateMessage');
+            if (!notice || !loadingMessage) return;
+
+            _currentRateLimitMessage = message || '';
+            notice.textContent = _currentRateLimitMessage;
+            notice.classList.toggle('visible', Boolean(_currentRateLimitMessage));
+
+            const baseLoadingMessage = 'Loading war data...';
+            loadingMessage.textContent = _currentRateLimitMessage
+                ? `${baseLoadingMessage} ${_currentRateLimitMessage}`
+                : baseLoadingMessage;
+
+            document.querySelectorAll('.war-report-loading').forEach(element => {
+                element.textContent = _currentRateLimitMessage
+                    ? `Loading attack data... ${_currentRateLimitMessage}`
+                    : 'Loading attack data...';
+            });
+        }
+
+        function handleRateLimitEvent(event) {
+            updateRateLimitNotice(formatRateLimitMessage(event.detail));
+        }
+
+        function handleRateLimitClearedEvent() {
+            updateRateLimitNotice('');
+        }
+
+        window.addEventListener('torn-api-rate-limit', handleRateLimitEvent);
+        window.addEventListener('torn-api-rate-limit-cleared', handleRateLimitClearedEvent);
 
         async function initializePage() {
             const apiKey = getApiKey();
@@ -333,25 +409,6 @@ Requirements:
             }
         }
 
-        function getWarStatus(war, factionId, currentTime) {
-            if (war.start > currentTime) {
-                return { label: 'Future', cssClass: 'status-future' };
-            }
-            if (war.end === 0 || war.end === null) {
-                return { label: 'Ongoing', cssClass: 'status-ongoing' };
-            }
-            if (war.winner === factionId) {
-                return { label: 'Won', cssClass: 'status-won' };
-            }
-            return { label: 'Lost', cssClass: 'status-lost' };
-        }
-
-        function getOpponentName(war, factionId) {
-            if (!Array.isArray(war.factions)) return 'Unknown';
-            const opponent = war.factions.find(f => f.id !== factionId);
-            return opponent ? opponent.name : 'Unknown';
-        }
-
         function renderWars(wars, factionId, currentTime) {
             const warsList = document.getElementById('warsList');
             warsList.innerHTML = '';
@@ -379,6 +436,7 @@ Requirements:
                 tile.dataset.warStart = war.start;
                 tile.dataset.isDone = isDone ? '1' : '0';
                 tile.dataset.isOngoing = isOngoing ? '1' : '0';
+                tile.dataset.warEnd = war.end || '';
                 tile.dataset.enemyFactionId = enemyFactionId || '';
                 tile.addEventListener('click', onTileClick);
                 tile.innerHTML = `
@@ -397,12 +455,6 @@ Requirements:
                 wrapper.appendChild(details);
                 warsList.appendChild(wrapper);
             }
-        }
-
-        function getEnemyFactionId(war, factionId) {
-            if (!Array.isArray(war.factions)) return null;
-            const enemy = war.factions.find(f => f.id !== factionId);
-            return enemy ? enemy.id : null;
         }
 
         async function onTileClick(event) {
@@ -436,27 +488,40 @@ Requirements:
         }
 
         async function loadFinishedWarReport(warId, details, tile) {
-            details.innerHTML = '<p class="war-report-loading">Loading war report...</p>';
+            details.innerHTML = `<p class="war-report-loading">Loading attack data...${_currentRateLimitMessage ? ` ${escapeHtml(_currentRateLimitMessage)}` : ''}</p>`;
             try {
-                let reportData = _reportCache[warId];
-                if (!reportData) {
-                    reportData = await fetchRankedWarReport(_apiKey, warId);
-                    _reportCache[warId] = reportData;
+                const warStart = parseInt(tile.dataset.warStart, 10);
+                const warEnd = parseInt(tile.dataset.warEnd, 10);
+                const enemyFactionId = parseInt(tile.dataset.enemyFactionId, 10);
+
+                let cachedWar = _finishedWarCache[warId];
+                if (!cachedWar) {
+                    const memberHits = await createFactionMemberHitsSeed();
+                    const attacks = await fetchFactionAttacks(_apiKey, warStart, warEnd);
+                    const aggregation = aggregateWarMemberHits({
+                        attacks,
+                        memberHits,
+                        warStart,
+                        warEnd,
+                        enemyFactionId,
+                        chainState: null
+                    });
+                    await resolveUnknownMemberNames(aggregation.memberHits);
+                    cachedWar = aggregation;
+                    _finishedWarCache[warId] = cachedWar;
+                    saveFinishedWarCacheStore();
                 }
-                const report = reportData.rankedwarreport;
-                const factionData = report.factions.find(f => f.id === _factionId);
-                if (!factionData) {
-                    details.innerHTML = '<p class="war-report-error">Could not find your faction in this war report.</p>';
-                    details.dataset.loaded = '1';
-                    return;
-                }
-                const members = [...factionData.members].sort((a, b) => b.attacks - a.attacks);
+
+                const members = sortMemberHitsForDisplay(cachedWar.memberHits);
                 details.innerHTML = buildFinishedReportHTML(warId, members);
                 updateFinishedWarPayouts(warId);
                 details.dataset.loaded = '1';
             } catch (error) {
-                console.error('Error loading war report:', error);
-                details.innerHTML = `<p class="war-report-error">Failed to load war report: ${escapeHtml(error.message)}</p>`;
+                console.error('Error loading finished war attacks:', error);
+                const msg = error.isPermissionError
+                    ? 'Error: Requires limited access key with faction API access permissions. The provided key has insufficient permissions.'
+                    : `Failed to load attack data: ${escapeHtml(error.message)}`;
+                details.innerHTML = `<p class="war-report-error">${msg}</p>`;
             }
         }
 
@@ -511,13 +576,19 @@ Requirements:
                         <div id="finished-total-pay-${warId}" class="war-payout-value">0</div>
                     </div>
                 </div>
+                <div style="display:flex; justify-content:flex-end; gap:4px; margin:6px 0 6px;">
+                    <button
+                        title="Clear cache"
+                        style="background:none;border:none;cursor:pointer;font-size:18px;padding:2px 4px;line-height:1;"
+                        onclick="onClearFinishedWarCache(event, '${warId}')">&#10060;</button>
+                </div>
                 <table class="war-report-table">
                     <thead><tr><th>Member</th><th>Attacks</th><th>Score</th><th>Payout</th></tr></thead>
                     <tbody>`;
             for (const m of members) {
                 html += `<tr>
                     <td data-label="Member"><a href="https://www.torn.com/profiles.php?XID=${m.id}" target="_blank">${escapeHtml(m.name)} [${m.id}]</a></td>
-                    <td data-label="Attacks" data-finished-war-hits="${m.attacks}">${m.attacks}</td>
+                    <td data-label="Attacks" data-finished-war-hits="${m.hits}">${m.hits}</td>
                     <td data-label="Score">${m.score.toFixed(2)}</td>
                     <td data-label="Payout" id="finished-payout-${warId}-${m.id}">n/a</td>
                 </tr>`;
@@ -540,6 +611,24 @@ Requirements:
                 localStorage.setItem(FINISHED_WAR_INPUTS_STORAGE_KEY, JSON.stringify(store));
             } catch (error) {
                 console.error('Failed to save finished war input cache:', error);
+            }
+        }
+
+        function loadFinishedWarCacheStore() {
+            try {
+                const stored = JSON.parse(localStorage.getItem(FINISHED_WAR_CACHE_STORAGE_KEY) || '{}');
+                return stored && typeof stored === 'object' ? stored : {};
+            } catch (error) {
+                console.error('Failed to read finished war results cache:', error);
+                return {};
+            }
+        }
+
+        function saveFinishedWarCacheStore() {
+            try {
+                localStorage.setItem(FINISHED_WAR_CACHE_STORAGE_KEY, JSON.stringify(_finishedWarCache));
+            } catch (error) {
+                console.error('Failed to save finished war results cache:', error);
             }
         }
 
@@ -566,10 +655,6 @@ Requirements:
             if (!targetInput) return;
             saveFinishedWarInputField(warId, 'target', targetInput.value);
             updateFinishedWarPayouts(warId);
-        }
-
-        function sanitizeIntegerInput(value) {
-            return String(value || '').replace(/[^0-9]/g, '');
         }
 
         function onFinishedWarEarningsFocus(warId) {
@@ -610,44 +695,49 @@ Requirements:
             const cutPercentInput = document.getElementById(`finished-cut-percent-${warId}`);
             const cutValueEl = document.getElementById(`finished-cut-value-${warId}`);
             const totalPayEl = document.getElementById(`finished-total-pay-${warId}`);
-
-            const target = parseInt(targetInput?.value || '', 10);
-            const totalEarnings = parseInt(sanitizeIntegerInput(earningsInput?.value || '0'), 10) || 0;
-            const cutPercent = parseInt(cutPercentInput?.value || '0', 10) || 0;
-            const factionCutValue = Math.round(totalEarnings * (cutPercent / 100));
-            const totalPay = totalEarnings - factionCutValue;
             const hitCells = document.querySelectorAll(`[id^="finished-payout-${warId}-"]`);
-            const totalHits = Array.from(document.querySelectorAll(`#war-details-${warId} td[data-finished-war-hits]`))
-                .reduce((sum, cell) => sum + (parseInt(cell.dataset.finishedWarHits || '0', 10) || 0), 0);
+            const memberHits = Array.from(document.querySelectorAll(`#war-details-${warId} td[data-finished-war-hits]`))
+                .map(cell => parseInt(cell.dataset.finishedWarHits || '0', 10) || 0);
+            const payoutSummary = calculateFinishedWarPayouts({
+                targetInput: targetInput?.value || '',
+                totalEarningsInput: earningsInput?.value || '0',
+                cutPercentInput: cutPercentInput?.value || '0',
+                memberHits
+            });
 
-            cutValueEl.textContent = formatWholeDollarValue(factionCutValue);
-            totalPayEl.textContent = formatWholeDollarValue(totalPay);
+            cutValueEl.textContent = formatWholeDollarValue(payoutSummary.factionCutValue);
+            totalPayEl.textContent = formatWholeDollarValue(payoutSummary.totalPay);
 
-            for (const payoutCell of hitCells) {
-                const row = payoutCell.parentElement;
-                const hitCell = row?.querySelector('td[data-finished-war-hits]');
-                const userHits = parseInt(hitCell?.dataset.finishedWarHits || '0', 10) || 0;
-
-                if (!Number.isFinite(target)) {
-                    payoutCell.textContent = 'n/a';
-                    continue;
-                }
-
-                if (totalHits <= 0) {
-                    payoutCell.textContent = formatWholeDollarValue(0);
-                    continue;
-                }
-
-                const payoutValue = Math.round((totalPay / totalHits) * Math.min(userHits, target));
-                payoutCell.textContent = formatWholeDollarValue(payoutValue);
-            }
+            hitCells.forEach((payoutCell, index) => {
+                const payoutValue = payoutSummary.payouts[index];
+                payoutCell.textContent = payoutValue === null ? 'n/a' : formatWholeDollarValue(payoutValue);
+            });
         }
 
-        function formatWholeDollarValue(value) {
-            if (value === '' || value === null || value === undefined) {
-                return '';
+        async function createFactionMemberHitsSeed() {
+            const membersData = await fetchFactionMembers(_apiKey);
+            const membersArray = Array.isArray(membersData.members)
+                ? membersData.members
+                : Object.values(membersData.members || {});
+            const memberHits = {};
+            for (const member of membersArray) {
+                memberHits[member.id] = { id: member.id, name: member.name, hits: 0, score: 0 };
             }
-            return Number(value || 0).toLocaleString('en-US');
+            return memberHits;
+        }
+
+        async function resolveUnknownMemberNames(memberHits) {
+            const unknown = Object.values(memberHits).filter(member => member.name === null);
+            if (unknown.length === 0) return;
+
+            await Promise.all(unknown.map(async (member) => {
+                try {
+                    const data = await fetchUserBasicById(_apiKey, member.id);
+                    member.name = data.profile?.name || data.name || `Player ${member.id}`;
+                } catch {
+                    member.name = `Player ${member.id}`;
+                }
+            }));
         }
 
         async function loadOngoingWarReport(tile, details) {
@@ -655,7 +745,7 @@ Requirements:
             const warStart = parseInt(tile.dataset.warStart, 10);
             const enemyFactionId = parseInt(tile.dataset.enemyFactionId, 10);
 
-            details.innerHTML = '<p class="war-report-loading">Loading attack data...</p>';
+            details.innerHTML = `<p class="war-report-loading">Loading attack data...${_currentRateLimitMessage ? ` ${escapeHtml(_currentRateLimitMessage)}` : ''}</p>`;
 
             try {
                 // If cache is for a different war, clear it
@@ -663,66 +753,45 @@ Requirements:
                     _ongoingWarCache = null;
                 }
 
-                const VALID_RESULTS = new Set(['Attacked', 'Hospitalized', 'Bounty']);
-
                 let memberHits;   // { memberId: { name, id, hits, score } }
                 let fromTimestamp;
+                let chainState;
 
                 if (_ongoingWarCache && _ongoingWarCache.warId === warId) {
                     // Incremental fetch: only attacks newer than last cached
                     memberHits = _ongoingWarCache.memberHits;
-                    fromTimestamp = _ongoingWarCache.lastAttackTimestamp + 1;
+                    fromTimestamp = Math.max(_ongoingWarCache.lastAttackTimestamp + 1, warStart);
+                    chainState = _ongoingWarCache.chainState;
                 } else {
                     // Fresh load: seed member list from /faction/members (all start at 0 hits)
-                    const membersData = await fetchFactionMembers(_apiKey);
-                    const membersArray = Array.isArray(membersData.members)
-                        ? membersData.members
-                        : Object.values(membersData.members || {});
-                    memberHits = {};
-                    for (const m of membersArray) {
-                        memberHits[m.id] = { id: m.id, name: m.name, hits: 0, score: 0 };
-                    }
+                    memberHits = await createFactionMemberHitsSeed();
                     fromTimestamp = warStart;
+                    chainState = null;
                 }
 
                 const [attacks] = await Promise.all([
-                    fetchFactionAttacksFull(_apiKey, fromTimestamp)
+                    fetchFactionAttacks(_apiKey, fromTimestamp)
                 ]);
 
-                let latestTimestamp = _ongoingWarCache ? _ongoingWarCache.lastAttackTimestamp : 0;
+                const aggregation = aggregateWarMemberHits({
+                    attacks,
+                    memberHits,
+                    warStart,
+                    enemyFactionId,
+                    chainState,
+                    lastAttackTimestamp: _ongoingWarCache ? _ongoingWarCache.lastAttackTimestamp : null
+                });
 
-                for (const attack of attacks) {
-                    if (attack.ended > latestTimestamp) latestTimestamp = attack.ended;
-                    if (attack.defender?.faction_id !== enemyFactionId) continue;
-                    if (!VALID_RESULTS.has(attack.result)) continue;
+                await resolveUnknownMemberNames(aggregation.memberHits);
 
-                    const attackerId = attack.attacker?.id;
-                    if (!attackerId) continue;
+                _ongoingWarCache = {
+                    warId,
+                    lastAttackTimestamp: aggregation.lastAttackTimestamp,
+                    chainState: aggregation.chainState,
+                    memberHits: aggregation.memberHits
+                };
 
-                    if (!memberHits[attackerId]) {
-                        // Attacker is not a current member (e.g. left faction) — still track them
-                        memberHits[attackerId] = { id: attackerId, name: null, hits: 0, score: 0 };
-                    }
-                    memberHits[attackerId].hits++;
-                    memberHits[attackerId].score += attack.respect_gain || 0;
-                }
-
-                // Resolve names for any ex-members whose name is not yet known, in parallel
-                const unknown = Object.values(memberHits).filter(m => m.name === null);
-                if (unknown.length > 0) {
-                    await Promise.all(unknown.map(async (m) => {
-                        try {
-                            const data = await fetchUserBasicById(_apiKey, m.id);
-                            m.name = data.profile?.name || data.name || `Player ${m.id}`;
-                        } catch {
-                            m.name = `Player ${m.id}`;
-                        }
-                    }));
-                }
-
-                _ongoingWarCache = { warId, lastAttackTimestamp: latestTimestamp, memberHits };
-
-                const sorted = Object.values(memberHits).sort((a, b) => b.hits - a.hits || a.name.localeCompare(b.name));
+                const sorted = sortMemberHitsForDisplay(aggregation.memberHits);
                 details.innerHTML = buildOngoingReportHTML(sorted, warId, tile);
                 details.dataset.loaded = '1';
 
@@ -781,6 +850,16 @@ Requirements:
             const details = document.getElementById(`war-details-${warId}`);
             details.dataset.loaded = '0';
             await loadOngoingWarReport(tile, details);
+        }
+
+        async function onClearFinishedWarCache(event, warId) {
+            event.stopPropagation();
+            delete _finishedWarCache[warId];
+            saveFinishedWarCacheStore();
+            const tile = document.querySelector(`.war-tile[data-war-id='${warId}']`);
+            const details = document.getElementById(`war-details-${warId}`);
+            details.dataset.loaded = '0';
+            await loadFinishedWarReport(warId, details, tile);
         }
 
         function escapeHtml(text) {

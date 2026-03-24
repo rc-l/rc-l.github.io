@@ -65,7 +65,7 @@
             <h2>Introduction</h2>
             <div class="help-card">
                 <p>The War Dashboard gives a quick overview of your faction's most recent ranked wars. Each war appears as its own tile with the opponent name and current status.</p>
-                <p>When you open a tile, the page shows detailed member performance for that war. Finished wars use the ranked war report from Torn. Ongoing wars are built from outgoing faction attacks that match the active ranked war.</p>
+                <p>When you open a tile, the page shows detailed member performance for that war. Finished wars and ongoing wars are both built from outgoing faction attacks returned by Torn's simplified faction attack endpoint.</p>
             </div>
         </div>
 
@@ -76,7 +76,7 @@
                 <ul class="help-list">
                     <li><strong>Member</strong>: The player name and Torn user ID. Clicking it opens that player's Torn profile.</li>
                     <li><strong>Attacks</strong>: The number of counted war attacks for that member.</li>
-                    <li><strong>Score</strong>: For finished wars this comes directly from the ranked war report. For ongoing wars it is the sum of <code>respect_gain</code> from counted attacks.</li>
+                    <li><strong>Score</strong>: For both finished wars and ongoing wars this is the sum of <code>respect_gain</code> from counted attacks.</li>
                     <li><strong>Payout</strong>: Finished wars only. This is the member's calculated share of the total pay based on their counted hits, capped by the target value.</li>
                 </ul>
             </div>
@@ -92,7 +92,15 @@
                     <li><strong>Faction cut value</strong>: The dollar amount removed from total earnings using the faction cut percentage.</li>
                     <li><strong>Total Pay</strong>: The amount remaining after the faction cut. This is the amount distributed across member payouts.</li>
                 </ul>
-                <p>The finished war input fields are stored locally in your browser on your device. They are not shared with other users or faction members, are and not synchronized between browsers or machines.</p>
+                <p>The finished war input fields are stored locally in your browser on your device. They are not shared with other users or faction members and are not synchronized between browsers or machines.</p>
+            </div>
+        </div>
+
+        <div class="help-section">
+            <h2>Finished Wars</h2>
+            <div class="help-card">
+                <p>Finished wars use the same counted-hit and chain-tracking logic as ongoing wars, but the attack list is filtered to the war's start and end timestamps.</p>
+                <p>Finished war results are cached per war after they load. Use the <strong>Clear Cache (&#10060;)</strong> button above the finished war table to force a full reload for that war.</p>
             </div>
         </div>
 
@@ -115,18 +123,20 @@
             <h2>Ongoing Wars</h2>
             <div class="help-card">
                 <h3>Which Attacks Count</h3>
-                <p>Ongoing war results are built from outgoing faction attacks and filtered to only include attacks that belong to the active ranked war.</p>
+                <p>Ongoing war results are built from outgoing faction attacks during the active war window, starting from the ranked war start timestamp.</p>
                 <ul class="help-list">
-                    <li>The attack must happen during the active war window, starting from the war start timestamp.</li>
-                    <li>The defender must belong to the enemy faction for that ranked war.</li>
-                    <li>The result must be one of: <strong>Attacked</strong>, <strong>Hospitalized</strong>, or <strong>Bounty</strong>.</li>
-                    <li>Other attack results are ignored and do not count as attacks in the table.</li>
+                    <li><strong>Enemy faction hits</strong>: Because the simplified attack endpoint does not include <code>is_ranked_war</code>, the dashboard treats an attack as a war hit when the defender belongs to the enemy faction for that war and the result is <strong>Attacked</strong>, <strong>Hospitalized</strong>, <strong>Bounty</strong>, or <strong>Assist</strong>.</li>
+                    <li><strong>Chain saver hits</strong>: A non-enemy-faction hit can also count when the attacker and defender are not in the same faction and the chain tracker marks the hit as a chain saver. A chain saver is a successful attack made between <strong>4 minutes</strong> and <strong>5 minutes</strong> of the previous successful chain hit on a chain of length at least <strong>50</strong>.</li>
+                    <li>The chain tracker processes all outgoing attacks in time order, including hits that already count as enemy-faction war hits, so the chain state stays accurate while a war is active.</li>
+                    <li>Only successful attacks advance the chain: <strong>Attacked</strong>, <strong>Mugged</strong>, <strong>Hospitalized</strong>, <strong>Arrested</strong>, and <strong>Bounty</strong>. Results such as <strong>Lost</strong> and <strong>Assist</strong> do not advance the chain and do not reset the timer.</li>
+                    <li>A chain starts at length 1 on the first successful attack. The first 10 successful attacks form the warm-up period and must keep landing within 5 minutes of the previous successful chain hit. If more than 5 minutes pass between successful hits, the chain breaks and the triggering successful hit starts a new chain at length 1.</li>
+                    <li>The ongoing-war score is the sum of <code>respect_gain</code> from counted attacks, so some counted results such as <strong>Assist</strong> may still add 0 score.</li>
                 </ul>
 
                 <h3>Refreshing Data</h3>
                 <p>On the top right of the user table you'll find buttons to update the data.</p>
                 <ul class="help-list">
-                    <li><strong>Update Table (&#x1F504;)</strong>: Refreshes the user table with the latest data. This is the usual way to refresh and most friendly to the Torn API.</li>
+                    <li><strong>Update Table (&#x1F504;)</strong>: Refreshes the user table with the latest data. This is the usual way to refresh and most friendly to the Torn API because it reuses the cached totals and continues the cached chain state from the last successful chain hit.</li>
                     <li><strong>Clear Cache (&#10060;)</strong>: Clears the local cache to force a full data reload. Use this if the data seems outdated or incorrect. This will generate more requests to the Torn API than the Update Table button.</li>
                 </ul>
             </div>
