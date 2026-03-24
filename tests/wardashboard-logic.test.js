@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { aggregateWarMemberHits } = require('../pages/torn/wardashboard-logic.js');
+const { aggregateWarMemberHits } = require('../docs/torn/wardashboard-logic.js');
 
 function attack({
     timestamp,

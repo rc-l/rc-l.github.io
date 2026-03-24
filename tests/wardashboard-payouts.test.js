@@ -5,7 +5,7 @@ const {
     calculateFinishedWarPayouts,
     formatWholeDollarValue,
     sanitizeIntegerInput
-} = require('../pages/torn/wardashboard-payouts.js');
+} = require('../docs/torn/wardashboard-payouts.js');
 
 test('sanitizeIntegerInput strips non-digit characters without changing the number order', () => {
     assert.equal(sanitizeIntegerInput('$12,345abc'), '12345');
